@@ -9,8 +9,8 @@
 - [x] Set up React + TypeScript + Vite frontend
 - [x] Set up local PostgreSQL with PostGIS + pgvector extensions
 - [x] Wire `.env` loading and Anthropic API key
-- [ ] Configure prompt caching in Anthropic SDK calls (system prompts + tool defs)
-- [ ] Add LangSmith tracing init
+- [x] Configure prompt caching in Anthropic SDK calls (system prompts + tool defs)
+- [x] Add LangSmith tracing init
 - [ ] Set Anthropic console budget alerts at $5 (soft) and $8 (hard)
 
 ### 2. Data ingestion (CO + TX)  [MVP4]

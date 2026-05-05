@@ -1,6 +1,9 @@
 from fastapi import FastAPI
 
 from prospector.config import settings
+from prospector.llm.tracing import init_tracing
+
+init_tracing()
 
 app = FastAPI(title="Prospector's Compass")
 
