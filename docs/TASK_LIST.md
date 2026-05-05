@@ -5,10 +5,10 @@
 ### 1. Project setup
 **Satisfies:** infrastructure
 - [x] Initialize git repo at project root
-- [ ] Set up Python backend project (FastAPI + LangGraph + uv or poetry)
+- [x] Set up Python backend project (FastAPI + LangGraph + uv or poetry)
 - [ ] Set up React + TypeScript + Vite frontend
 - [ ] Set up local PostgreSQL with PostGIS + pgvector extensions
-- [ ] Wire `.env` loading and Anthropic API key
+- [x] Wire `.env` loading and Anthropic API key
 - [ ] Configure prompt caching in Anthropic SDK calls (system prompts + tool defs)
 - [ ] Add LangSmith tracing init
 - [ ] Set Anthropic console budget alerts at $5 (soft) and $8 (hard)
