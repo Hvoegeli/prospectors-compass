@@ -1,0 +1,24 @@
+services:
+  db:
+    build:
+      context: ./infra/db
+    image: prospector-db:local
+    container_name: prospector-db
+    environment:
+      POSTGRES_USER: prospector
+      POSTGRES_PASSWORD: prospector
+      POSTGRES_DB: prospector
+    ports:
+      - "5432:5432"
+    volumes:
+      - prospector_pgdata:/var/lib/postgresql/data
+      - ./infra/db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U prospector -d prospector"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  prospector_pgdata:
