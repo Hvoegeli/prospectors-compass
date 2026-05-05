@@ -1,0 +1,60 @@
+# === Environment ===
+.env
+.env.*
+!.env.example
+
+# === Python ===
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+
+# === Node / JS / TS ===
+node_modules/
+.next/
+.expo/
+.expo-shared/
+dist-ssr/
+*.local
+.eslintcache
+
+# === Vite ===
+dist/
+
+# === Mobile (RN + Expo) ===
+ios/Pods/
+ios/build/
+android/build/
+android/app/build/
+
+# === Map data (large; download/generate locally) ===
+tiles/
+*.mbtiles
+data/raw/
+
+# === Logs ===
+*.log
+logs/
+
+# === macOS ===
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# === IDE ===
+.vscode/
+.idea/
+*.swp
+
+# === LangSmith trace exports ===
+.langsmith/
+
+# === Eval cache ===
+evals/_snapshots_cache/
