@@ -4,7 +4,7 @@
 
 ### 1. Project setup
 **Satisfies:** infrastructure
-- [ ] Initialize git repo at project root
+- [x] Initialize git repo at project root
 - [ ] Set up Python backend project (FastAPI + LangGraph + uv or poetry)
 - [ ] Set up React + TypeScript + Vite frontend
 - [ ] Set up local PostgreSQL with PostGIS + pgvector extensions
