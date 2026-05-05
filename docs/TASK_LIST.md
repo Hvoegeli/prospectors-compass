@@ -7,7 +7,7 @@
 - [x] Initialize git repo at project root
 - [x] Set up Python backend project (FastAPI + LangGraph + uv or poetry)
 - [x] Set up React + TypeScript + Vite frontend
-- [ ] Set up local PostgreSQL with PostGIS + pgvector extensions
+- [x] Set up local PostgreSQL with PostGIS + pgvector extensions
 - [x] Wire `.env` loading and Anthropic API key
 - [ ] Configure prompt caching in Anthropic SDK calls (system prompts + tool defs)
 - [ ] Add LangSmith tracing init
