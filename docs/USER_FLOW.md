@@ -13,7 +13,7 @@
          │
          ▼
 ┌─────────────────────────────┐
-│ Pick state (CO/TX) +        │  ~10s
+│ Pick state (CO) +           │  ~10s
 │ target material(s)          │
 └────────┬────────────────────┘
          │
@@ -91,7 +91,7 @@
 
 ### Flow C — Learning (Desktop)
 
-User opens app with no destination → asks open question ("Texas pegmatite minerals") → Education/Knowledge subagent returns structured primer with linked map regions and recommended public-domain reading → user bookmarks the primer → it seeds a future trip via Flow A.
+User opens app with no destination → asks open question ("Colorado pegmatite minerals") → Education/Knowledge subagent returns structured primer with linked map regions and recommended public-domain reading → user bookmarks the primer → it seeds a future trip via Flow A.
 
 ## API Endpoints
 
@@ -107,7 +107,7 @@ User opens app with no destination → asks open question ("Texas pegmatite mine
 ```json
 {
   "trip_id": "uuid|null",
-  "state": "CO" | "TX",
+  "state": "CO",
   "targets": ["gold-placer", "gold-lode", "topaz", ...],
   "query": "placer gold within 2 hours of Denver, beginner-friendly"
 }
@@ -169,8 +169,8 @@ event: done
 
 | Query | Expected Result | Expected Answer Skeleton |
 |---|---|---|
-| "Placer gold within 2 hours of Denver, beginner" | 3–7 areas in Front Range / Clear Creek / Cache La Poudre | Idaho Springs / Clear Creek tribs cited from MRDS; technique = panning; hazards = abandoned mines flagged; land-status disclaimer present |
-| "Where can I look for topaz in Texas?" | Mason County area + Llano Uplift | Pegmatite belt explanation; Mason County rockhound park; CGS-equivalent + TX BEG citations; "verify access" disclaimer |
+| "Placer gold within 2 hours of Denver, beginner" | 3–7 areas in Front Range / Clear Creek / Tarryall Creek (Park County) | Idaho Springs / Clear Creek tribs cited from MRDS; technique = panning; hazards = abandoned mines flagged; land-status disclaimer present |
+| "Where can I look for topaz in Colorado?" | Lake George / Tarryall Mountains area (Park County, Pikes Peak batholith) | Granite-pocket / pegmatite explanation; Lake George collecting area; CGS citations; "verify access" disclaimer |
 | "Photo of yellow metallic flake from creek bed at 39.74N -105.5W" | Specimen ID response | Pyrite (top candidate, ~50%) vs gold (lower); field tests; geology context: known placer drainage |
 | "What's the difference between placer and lode deposits?" | Education primer | Glossary entries; map showing nearby placer + lode districts; recommended reading from USGS Circular series |
 | "Is it legal to prospect at [coordinates]?" | Refused (out of scope) | "I don't make legality determinations. Land status here is [BLM Royal Gorge Field Office] as of [date]. Verify with the agency: [link to MLRS / BLM contact]." |

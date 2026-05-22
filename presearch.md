@@ -20,7 +20,7 @@ This document captures the load-bearing decisions made before any code is writte
   3. **Land status: never go/no-go.** Always show the disclaimer + "verify with the agency" CTA. The agent never says "you can prospect here."
   4. **Specimen ID stays humble.** Confidence band always shown. Below ~60% confidence, default to "here are field tests to differentiate" rather than naming the specimen.
   5. **Hazard surfacing required with details.** Any recommended area with abandoned mines or known terrain risks surfaces those alongside the recommendation, with concrete details — not generic warnings, not in a separate panel.
-- **Data sources:** USGS (national geologic map DB, MRDS, USMIN, topo, DEM, NAIP), BLM (land + claims), USFS (forest boundaries), Colorado Geological Survey, Texas Bureau of Economic Geology, plus a curated public-domain knowledge corpus (see §14).
+- **Data sources:** USGS (national geologic map DB, MRDS, USMIN, topo, DEM, NAIP), BLM (land + claims), USFS (forest boundaries), Colorado Geological Survey, plus a curated public-domain knowledge corpus (see §14). _(Texas Bureau of Economic Geology deferred to Phase 4 with Texas.)_
 
 ### 2. Scale & Performance
 - **Query volume:** single user (Harrison) for the foreseeable future. Maybe a handful of friends in v2.
@@ -64,11 +64,11 @@ Aggressive frugality to fit the $10 cap.
 ### 7. Tool Design
 - **Federal data tools:** USGS MRDS, USMIN, geologic map DB, DEM/terrain, NAIP imagery.
 - **Land-status tools:** BLM boundaries + claim layer (light surface, see §14), USFS boundaries.
-- **State data tools:** Colorado Geological Survey, Texas Bureau of Economic Geology.
+- **State data tools:** Colorado Geological Survey. _(Texas Bureau of Economic Geology deferred to Phase 4.)_
 - **Spatial tools:** PostGIS for intersection, buffer, watershed delineation, distance.
 - **Knowledge tools:** vector search over the public-domain corpus.
 - **Vision tool:** specimen photo → Claude vision call.
-- **Mock vs real:** **ingest CO + TX data into a local PostGIS once, query locally during dev.** Federal APIs are flaky and rate-limited; local copy makes the agent loop fast and cheap. Refresh land-status data monthly. Refresh other layers as needed (mostly slow-changing).
+- **Mock vs real:** **ingest CO (I-70 corridor focus area) data into a local PostGIS once, query locally during dev.** Federal APIs are flaky and rate-limited; local copy makes the agent loop fast and cheap. Refresh land-status data monthly. Refresh other layers as needed (mostly slow-changing).
 - **Dev-mode mocks for LLM calls:** wire subagents with canned responses first, swap to real LLM calls only when running canonical eval cases or testing against new queries. Realistic build burn: ~30–60 real LLM calls.
 - **Error handling per tool:** structured error returned to supervisor → supervisor decides retry / fallback / "data unavailable" surface to user. No fancy circuit breakers for v1.
 
@@ -81,7 +81,7 @@ Aggressive frugality to fit the $10 cap.
 ### 9. Eval Approach
 - **Golden snapshot replay, hand-curated, no CI.**
 - **Case structure:** `evals/cases/` folder — ~10–20 scenarios per state initially.
-  - Examples: "placer gold within 2hrs of Denver, beginner," "Texas topaz hunt for a newcomer."
+  - Examples: "placer gold within 2hrs of Denver, beginner," "Colorado topaz hunt for a newcomer."
   - Each case: input prompt + structural assertions ("must cite at least one MRDS record," "must include hazard section if recommending area near abandoned mines," "must show land-status disclaimer").
 - **Snapshot replay:** record agent's response once it's good; diff against future runs to catch regressions.
 - **Manual feedback loop:** thumbs-up/down in the UI; failed responses get added to the eval case folder.
@@ -152,7 +152,7 @@ Aggressive frugality to fit the $10 cap.
 
 These were left open in the PRD and resolved during this presearch.
 
-- **Q1 — Knowledge corpus licensing.** Public-domain only for v1. Ingest USGS Open-File Reports, Bulletins, Professional Papers, Circulars; state survey publications from CGS and TX BEG that are open-access; USFS/BLM informational pubs. Skip copyrighted prospecting books (licensing too murky). Wikipedia and forums are reference-only links, not ingested.
+- **Q1 — Knowledge corpus licensing.** Public-domain only for v1. Ingest USGS Open-File Reports, Bulletins, Professional Papers, Circulars; state survey publications from CGS that are open-access (TX BEG deferred to Phase 4); USFS/BLM informational pubs. Skip copyrighted prospecting books (licensing too murky). Wikipedia and forums are reference-only links, not ingested.
 - **Q2 — BLM claim data quality.** Light surface. Pull most recent BLM claim layer dump quarterly, render with visible "as of [date]" stamp. **No claim-level interpretation.** Every land-status panel links out to MLRS for verification.
 - **Q3 — Specimen ID training.** Prompted Claude vision (Haiku 4.5 first) with GPS-conditioned candidate list from Geology subagent. Optional: 2–3 retrieved reference images for top candidates. Test set: 50–100 known-label photos. Fine-tuning deferred indefinitely; revisit only if prompted approach plateaus below 70% top-1.
 - **Q4 — Tile hosting.** Self-host MBTiles. Generate from USGS topo + DEM hillshade + state geologic rasters. Local disk during dev, cheap object storage (S3/R2) later. Mobile offline = MBTiles bundled into app. No Mapbox paid tier.
@@ -166,13 +166,13 @@ These were left open in the PRD and resolved during this presearch.
 
 - **Project name:** Prospector's Compass.
 - **Stage:** personal/hobby prototype.
-- **Launch states:** Colorado and Texas only (PRD §7.1).
+- **Launch states:** Colorado only, limited to the I-70 corridor focus area (10 counties, PRD §7.1); Texas + rest-of-Colorado deferred to Phase 4.
 - **Two surfaces:** desktop web app (research) + iOS-only mobile app (field).
 - **Architecture:** LangGraph supervisor + 7 subagents.
 - **LLM default:** Claude Haiku 4.5 everywhere; Sonnet 4.6 escape hatch only; Opus not used.
 - **Prompt caching:** mandatory.
 - **Cost ceiling:** $10 hard cap for build + initial deploy.
-- **Data strategy:** ingest CO+TX once into local PostGIS; refresh land status monthly.
+- **Data strategy:** ingest CO (I-70 corridor focus area) once into local PostGIS; refresh land status monthly.
 - **Knowledge corpus:** public-domain federal + state survey publications only.
 - **Tiles:** self-hosted MBTiles; no Mapbox.
 - **Observability:** LangSmith free tier.
@@ -188,7 +188,7 @@ These were left open in the PRD and resolved during this presearch.
 - **Specimen ID accuracy target.** PRD §11 sets ≥80% top-1 on common specimens. Need to validate this is achievable on Haiku 4.5 vision before locking. Prototype gates the answer.
 - **PostGIS hosting in production.** Local for dev; if this ever leaves the laptop, where does PostGIS live? Defer.
 - **How "good enough" is Haiku 4.5 for supervisor synthesis?** Empirical question — measure during eval. Sonnet escalation rule should fire when Haiku synthesis fails on golden cases >X% of the time. Threshold TBD by observation.
-- **CO+TX dataset refresh automation.** Monthly refresh is a manual chore initially; whether to script it depends on real friction.
+- **CO dataset refresh automation.** Monthly refresh is a manual chore initially; whether to script it depends on real friction.
 
 ---
 
