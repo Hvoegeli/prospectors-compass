@@ -17,7 +17,7 @@ For a hobby project with eval-comfort 1, the pyramid is intentionally inverted f
 | Data ingestion parsers | every dataset has at least one happy + one malformed-record test | pytest |
 | Subagent contract validation | every subagent has a contract test | pytest + pydantic |
 | Prompt cache wiring | unit test asserts cache_control marker on supervisor + subagent system prompts | pytest with mocked Anthropic client |
-| Eval golden cases (CO + TX) | ≥ 20 cases at v1 release | snapshot replay runner |
+| Eval golden cases (CO) | ≥ 10 cases at v1 release | snapshot replay runner |
 | Specimen ID accuracy | ≥ 80% top-1 on common specimens | manual labeling on 50–100 photo set |
 | Specimen ID calibration | "high confidence" → correct ≥ 90% | calibration check |
 | Cost guardrail (build phase) | < $10 total spend | Anthropic dashboard + per-run cost log |
@@ -51,7 +51,7 @@ For a hobby project with eval-comfort 1, the pyramid is intentionally inverted f
 
 ### Manual smoke (E2E)
 - Pre-merge checklist:
-  - Desktop: trip planning flow (Flow A from `docs/USER_FLOW.md`) end-to-end with one CO and one TX query.
+  - Desktop: trip planning flow (Flow A from `docs/USER_FLOW.md`) end-to-end with one CO query.
   - Area export → mobile import works with no signal.
   - Mobile: GPS find logging round-trip (Flow B).
   - Specimen photo capture → agent response → log find.

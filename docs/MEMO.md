@@ -28,7 +28,7 @@ Prospector's Compass is a personal/hobby AI-agent application for hobbyist prosp
 **Why:** simpler infra, fewer moving parts, fits hobby budget. pgvector is fast enough for the corpus we'd realistically ingest (~10K–100K chunks). Co-locating with PostGIS makes spatial-filter + semantic-retrieval joins trivial.
 
 ### 6. Local data ingestion (not live federal API calls)
-**Choice:** ingest USGS / MRDS / USMIN / BLM / USFS / CGS / TX BEG data into local PostGIS. Refresh land status monthly; refresh other layers on demand.
+**Choice:** ingest USGS / MRDS / USMIN / BLM / USFS / CGS data into local PostGIS (Colorado only, clipped to the I-70 corridor focus area — 10 counties per PRD §7.1; Texas / TX BEG deferred to Phase 4). Refresh land status monthly; refresh other layers on demand.
 **Rejected:** live API calls per query.
 **Why:** federal APIs are flaky, rate-limited, and slow. The agent loop must be fast and cheap during dev. Static data also makes evals deterministic. The cost is one-time ingestion + monthly refresh of land status.
 

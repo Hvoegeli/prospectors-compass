@@ -13,16 +13,17 @@
 - [x] Add LangSmith tracing init
 - [ ] Set Anthropic console budget alerts at $5 (soft) and $8 (hard)
 
-### 2. Data ingestion (CO + TX)  [MVP4]
-- [ ] Ingest USGS national geologic map DB for CO and TX
-- [ ] Ingest USGS MRDS records for CO and TX
-- [ ] Ingest USGS USMIN records for CO and TX
-- [ ] Ingest BLM land boundaries + claim layer (with as-of date stamp on every record)
-- [ ] Ingest USFS forest boundaries
-- [ ] Ingest Colorado Geological Survey publications metadata + key spatial datasets
-- [ ] Ingest Texas Bureau of Economic Geology atlas + mineral resources data
+### 2. Data ingestion (CO — I-70 corridor focus area)  [MVP4]
+_Clip every spatial layer to the 10 focus-area counties (PRD §7.1): Denver, Jefferson, Clear Creek, Gilpin, Park, Summit, Lake, Eagle, Garfield, Mesa. Ingest statewide only where a dataset can't be pre-clipped, then filter on query._
+- [ ] Ingest USGS national geologic map DB, clipped to the focus-area counties
+- [ ] Ingest USGS MRDS records within the focus-area counties
+- [ ] Ingest USGS USMIN records within the focus-area counties
+- [ ] Ingest BLM land boundaries + claim layer for the focus-area counties (with as-of date stamp on every record)
+- [ ] Ingest USFS forest boundaries within the focus-area counties
+- [ ] Ingest Colorado Geological Survey publications metadata + key spatial datasets for the focus-area counties
 - [ ] Build a refresh script (manual run; monthly cadence target for land status)
 - [ ] Document license + source for every ingested dataset
+- _Deferred to Phase 4: Texas Bureau of Economic Geology atlas + mineral resources data (revive when Texas re-enters scope)._
 
 ### 3. Spatial query tools  [MVP5]
 - [ ] Watershed delineation (PostGIS + DEM)
@@ -50,13 +51,13 @@
 - [ ] Hazard surfacing required when abandoned mines or terrain risks are present in recommendation
 
 ### 6. Knowledge corpus + pgvector  [MVP10]
-- [ ] Curate public-domain document list (USGS pubs, CGS, TX BEG, USFS/BLM info)
+- [ ] Curate public-domain document list (USGS pubs, CGS, USFS/BLM info)
 - [ ] Document-licensing review log (track license per source)
 - [ ] Ingest + chunk + embed
 - [ ] Retrieval helper for the Education and Field Guidance subagents
 
 ### 7. Recommendation engine  [MVP6][MVP1][MVP2]
-- [ ] Region/state selector UI (CO, TX)
+- [ ] Region/state selector UI (CO)
 - [ ] Target-material selector UI
 - [ ] Supervisor query that returns ranked candidate areas
 - [ ] Rationale + confidence band rendering in UI
@@ -82,7 +83,7 @@
 
 ### 11. Eval suite (initial)  [MVP15]
 - [ ] `evals/cases/` folder structure
-- [ ] 10 golden cases for Colorado, 10 for Texas
+- [ ] 10 golden cases for Colorado (Texas cases deferred to Phase 4)
 - [ ] Snapshot replay runner
 - [ ] Manual run script (`evals/run.py`)
 - [ ] Failed responses easy to add as new eval cases

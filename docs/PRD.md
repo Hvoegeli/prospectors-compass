@@ -18,16 +18,16 @@ Hobbyist prospectors today face a fragmented information landscape: USGS, state 
 
 ## MVP Requirements
 
-- [MVP1] Multi-state region selector (Colorado and Texas only at launch)
+- [MVP1] Multi-state region selector (Colorado only at launch, limited to the I-70 corridor focus area — see §7.1; Texas deferred to Phase 4)
 - [MVP2] Target material selection (gold placer/lode, silver, copper, platinum, gemstones, collector specimens)
 - [MVP3] LangGraph supervisor + 7-subagent topology (Geology, Maps/GIS, Mining History, Land Status, Field Guidance, Specimen ID, Education/Knowledge); subagents communicate only through supervisor
-- [MVP4] Local data ingestion: USGS national geologic map DB, MRDS, USMIN, BLM/USFS boundaries + claim layer, CGS, TX BEG into PostGIS
+- [MVP4] Local data ingestion: USGS national geologic map DB, MRDS, USMIN, BLM/USFS boundaries + claim layer, CGS into PostGIS
 - [MVP5] Spatial query tools (PostGIS): intersection, buffer, watershed delineation, distance-from-road, slope/aspect
 - [MVP6] Recommendation engine: ranked candidate areas with plain-language rationale + confidence band
 - [MVP7] Verification policy enforcement: citations on every concrete claim, conflict surfacing with full reasoning chains, hazard details surfaced inline
 - [MVP8] Land-status surfacing: BLM/USFS boundaries with permanent disclaimer + MLRS link-out for claim verification (never go/no-go)
 - [MVP9] Interactive desktop map: MapLibre GL JS + self-hosted MBTiles + toggleable overlay layers (geology, topo, mines, land status, drainage, user pins)
-- [MVP10] Public-domain knowledge corpus + pgvector retrieval (USGS pubs, CGS, TX BEG, USFS/BLM info pubs)
+- [MVP10] Public-domain knowledge corpus + pgvector retrieval (USGS pubs, CGS, USFS/BLM info pubs)
 - [MVP11] iOS mobile app (React Native + Expo) with offline map cache via bundled MBTiles
 - [MVP12] GPS tracking + waypoints + find-pins on mobile (append-only sync to backend)
 - [MVP13] Specimen ID: Claude Haiku 4.5 vision with GPS-conditioned candidate list from Geology subagent; <60% confidence locks into "field tests" mode
@@ -37,7 +37,8 @@ Hobbyist prospectors today face a fragmented information landscape: USGS, state 
 
 ## Final Submission Features (Phase 4 / stretch)
 
-- Additional state expansions (CA, NV, AZ, ID, MT, NM, UT, OR, WA, AK)
+- Statewide Colorado expansion beyond the I-70 corridor focus area (rest-of-CO counties)
+- Additional state expansions (Texas first, then CA, NV, AZ, ID, MT, NM, UT, OR, WA, AK) — includes TX BEG atlas + mineral resources data and TX BEG open-access publications, deferred from v1
 - Knowledge corpus expansion (more state surveys, more open-access publications)
 - Voice interface for hands-free field queries
 - Optional anonymous aggregation ("most-prospected areas this season")
@@ -67,7 +68,7 @@ Hobbyist prospectors today face a fragmented information landscape: USGS, state 
 - Self-paced learning content
 - Land-status surfacing as research aid (informational only, never go/no-go)
 - Single-user account with desktop/mobile sync
-- Colorado + Texas data only
+- Colorado data only, limited to the **I-70 corridor focus area** — 10 counties: Denver, Jefferson, Clear Creek, Gilpin, Park, Summit, Lake, Eagle, Garfield, Mesa (Denver metro + the I-70 corridor to Grand Junction, covering the core of the Colorado Mineral Belt). This is the canonical focus-area county list referenced elsewhere as "the I-70 corridor focus area."
 
 **Out of scope (v1):**
 - Legal-compliance certification ("can I prospect here?")
@@ -77,5 +78,6 @@ Hobbyist prospectors today face a fragmented information landscape: USGS, state 
 - Assay services, lab integrations, specimen valuation
 - Android (deferred until post-v1)
 - Multi-user concurrency
-- States other than CO and TX (Phase 4)
+- Colorado counties outside the I-70 corridor focus area (Phase 4)
+- States other than CO, including Texas (Phase 4)
 - Voice interface (deferred)
