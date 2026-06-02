@@ -17,13 +17,30 @@ _Last updated: 2026-06-01_
 
   Ingestion engine: `backend/src/prospector/ingest/` — region-parameterized around `DownloadRegion` (state + counties; v1 default = `I70_CORRIDOR`). Run via `uv run python -m prospector.ingest {counties|mrds|usmin|geology|all}`. All downloaded data is local/gitignored.
 
-## Next up — minimal desktop MAP SLICE
+## Done — minimal desktop MAP SLICE ✅
 
-Core Group 2 data is done (5 layers above). **Decided next step: build a minimal MapLibre GL JS desktop map** that renders the ingested layers (counties, MRDS, USMIN, geology, ownership) — the first visible UI, and a visual QA of the clips. This means: a backend API endpoint serving GeoJSON from PostGIS (e.g. `GET /layers/{name}?bbox=...`) + the React/Vite frontend MapLibre canvas with toggleable overlays. Land-status layer must show the disclaimer when on.
+The first UI is built (commit on `task/2-data-ingestion-co`): `GET /layers/{name}`
+serves each PostGIS layer as GeoJSON; the MapLibre frontend (`frontend/src/MapView.tsx`)
+renders all 5 layers with toggles, click-to-inspect popups, and the land-status
+disclaimer. **Not yet visually checked in a browser** — run it (see "To see the map").
 
-**Then** return to the deferred data: USFS (subtask 5), CGS (subtask 6), refresh script (7).
+### To see the map
+```bash
+# terminal 1 — backend
+docker compose up -d
+cd backend && uv run uvicorn prospector.main:app --port 8000
+# terminal 2 — frontend
+cd frontend && npm run dev          # http://localhost:5173
+```
+If layers don't load: confirm the API at http://localhost:8000/layers and that the DB has data (`uv run python -m prospector.ingest all`).
 
-**BLM claims: deferred to a portal link** (decided 2026-06-01, PRD Open-Q #2 — PLSS-based messy data, low v1 value). The Land Status agent/UI will link to BLM's MLRS portal for claim verification rather than ingesting claims. See `docs/DATA_SOURCES.md`.
+## Next up — options
+
+1. **Thicken the map:** self-hosted basemap (TileServer GL + MBTiles — stack-locked, Group 8 subtask 2); currently the map uses a neutral background only. Color/legend polish; bbox-driven loading for USMIN.
+2. **Finish Group 2 data:** USFS boundaries (subtask 5), CGS (subtask 6), refresh script (7) — all deferred during the map slice.
+3. **Move to agents (Group 3/4):** spatial query tools + the LangGraph supervisor/subagents.
+
+**BLM claims: deferred to a portal link** (PRD Open-Q #2 — messy PLSS data). Land Status agent/UI links to BLM MLRS rather than ingesting. See `docs/DATA_SOURCES.md`.
 
 ## Earlier scope cuts (still in force)
 
