@@ -51,6 +51,8 @@ class MrdsSite(Base):
     county_geoid: Mapped[str] = mapped_column(String(5), nullable=False, index=True)
     #: Development status: Producer / Past Producer / Prospect / Occurrence / ...
     dev_stat: Mapped[str | None] = mapped_column(String, nullable=True)
+    #: Deposit type (MRDS dep_type), e.g. "Placer", "Vein", ... — for filtering.
+    dep_type: Mapped[str | None] = mapped_column(String, nullable=True)
     #: Primary / secondary / tertiary commodities (MRDS commod1-3).
     commod1: Mapped[str | None] = mapped_column(String, nullable=True)
     commod2: Mapped[str | None] = mapped_column(String, nullable=True)

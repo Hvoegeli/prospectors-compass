@@ -44,6 +44,7 @@ _USECOLS = [
     "commod2",
     "commod3",
     "dev_stat",
+    "dep_type",
 ]
 
 
@@ -84,6 +85,7 @@ def load_region_mrds(region: DownloadRegion = DEFAULT_REGION) -> gpd.GeoDataFram
         "url",
         "county_geoid",
         "dev_stat",
+        "dep_type",
         "commod1",
         "commod2",
         "commod3",
@@ -112,6 +114,7 @@ def ingest_mrds(region: DownloadRegion = DEFAULT_REGION) -> int:
                     url=na_to_none(row.url),
                     county_geoid=str(row.county_geoid),
                     dev_stat=na_to_none(row.dev_stat),
+                    dep_type=na_to_none(row.dep_type),
                     commod1=na_to_none(row.commod1),
                     commod2=na_to_none(row.commod2),
                     commod3=na_to_none(row.commod3),

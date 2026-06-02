@@ -73,8 +73,9 @@ function layerSpec(id: string): LayerSpecification {
         type: 'circle',
         paint: {
           'circle-radius': 3.4,
-          'circle-color': '#fbbf24',
-          'circle-stroke-color': '#92400e',
+          // Differentiate placer (cyan — stream gravels) from lode/hard-rock (amber).
+          'circle-color': ['case', ['==', ['get', 'dep_type'], 'Placer'], '#22d3ee', '#fbbf24'],
+          'circle-stroke-color': '#1f2937',
           'circle-stroke-width': 0.5,
         },
       }
@@ -99,6 +100,16 @@ function popupHtml(layerId: string, props: Record<string, unknown>): string {
   return `<div class="popup"><h4>${esc(layerId)}</h4><table>${rows}</table></div>`
 }
 
+type Facets = { commodities: string[]; deposit_types: string[] }
+
+function mrdsUrl(commodity: string, depType: string): string {
+  const p = new URLSearchParams()
+  if (commodity) p.set('commodity', commodity)
+  if (depType) p.set('dep_type', depType)
+  const qs = p.toString()
+  return `${API_BASE}/layers/mrds${qs ? `?${qs}` : ''}`
+}
+
 export default function MapView() {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
@@ -106,6 +117,34 @@ export default function MapView() {
     Object.fromEntries(LAYERS.map((l) => [l.id, true])),
   )
   const [status, setStatus] = useState('Loading layers…')
+  const [facets, setFacets] = useState<Facets>({ commodities: [], deposit_types: [] })
+  const [commodity, setCommodity] = useState('')
+  const [depType, setDepType] = useState('')
+  const [ready, setReady] = useState(false)
+
+  // Populate the target dropdowns from the real data.
+  useEffect(() => {
+    fetch(`${API_BASE}/layers/mrds/facets`)
+      .then((r) => r.json())
+      .then((f: Facets) => setFacets(f))
+      .catch(() => {})
+  }, [])
+
+  // Re-query the MRDS layer whenever the target filters change.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !ready) return
+    const src = map.getSource('mrds-src') as maplibregl.GeoJSONSource | undefined
+    if (!src) return
+    fetch(mrdsUrl(commodity, depType))
+      .then((r) => r.json())
+      .then((data: GeoJSON.FeatureCollection) => {
+        src.setData(data)
+        const filtered = commodity || depType ? ' (filtered)' : ''
+        setStatus(`MRDS: ${data.features.length.toLocaleString()} sites${filtered}`)
+      })
+      .catch(() => {})
+  }, [commodity, depType, ready])
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return
@@ -134,11 +173,22 @@ export default function MapView() {
         }
       }
       setStatus(`${loaded.toLocaleString()} features loaded`)
+      setReady(true)
     })
 
     map.on('click', (e) => {
-      const feats = map.queryRenderedFeatures(e.point, { layers: LAYERS.map((l) => l.id) })
+      // Query a small box (not a single pixel) so tiny mine dots are easy to hit.
+      const b = 5
+      const box: [maplibregl.PointLike, maplibregl.PointLike] = [
+        [e.point.x - b, e.point.y - b],
+        [e.point.x + b, e.point.y + b],
+      ]
+      const feats = map.queryRenderedFeatures(box, { layers: LAYERS.map((l) => l.id) })
       if (!feats.length) return
+      // Prefer specific point layers (the mines you're targeting) over the
+      // coverage polygons beneath them, so clicking near a dot shows the dot.
+      const priority = ['mrds', 'usmin', 'ownership', 'counties', 'geology']
+      feats.sort((a, b) => priority.indexOf(a.layer.id) - priority.indexOf(b.layer.id))
       new maplibregl.Popup({ maxWidth: '320px' })
         .setLngLat(e.lngLat)
         .setHTML(popupHtml(feats[0].layer.id, feats[0].properties ?? {}))
@@ -165,12 +215,41 @@ export default function MapView() {
       <div className="panel">
         <h3>Prospector's Compass</h3>
         <p className="status">{status}</p>
+
+        <div className="target">
+          <span className="target-title">Target (filters MRDS mines)</span>
+          <label className="field">
+            Commodity
+            <select value={commodity} onChange={(e) => setCommodity(e.target.value)}>
+              <option value="">Any</option>
+              {facets.commodities.map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+          </label>
+          <label className="field">
+            Deposit type
+            <select value={depType} onChange={(e) => setDepType(e.target.value)}>
+              <option value="">Any</option>
+              {facets.deposit_types.map((d) => (
+                <option key={d} value={d}>{d}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+
         {LAYERS.map((l) => (
           <label key={l.id} className="layer-toggle">
             <input type="checkbox" checked={visible[l.id]} onChange={() => toggle(l.id)} />
             {l.label}
           </label>
         ))}
+        {visible.mrds && (
+          <div className="legend">
+            <span><i className="dot" style={{ background: '#fbbf24' }} /> Lode / hard-rock</span>
+            <span><i className="dot" style={{ background: '#22d3ee' }} /> Placer</span>
+          </div>
+        )}
         {visible.ownership && (
           <p className="disclaimer">
             Land status is informational only. Verify land status, claim status, and prospecting

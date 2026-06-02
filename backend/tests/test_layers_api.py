@@ -56,6 +56,30 @@ def test_counties_geojson():
     assert "geom" not in feat["properties"]
 
 
+def test_mrds_facets():
+    if not _db_up():
+        pytest.skip("Postgres not reachable")
+    resp = client.get("/layers/mrds/facets")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "commodities" in body and "deposit_types" in body
+    if not body["commodities"]:
+        pytest.skip("mrds not ingested")
+    # Commodities are tokenized — single values, not comma-joined combinations.
+    assert all("," not in c for c in body["commodities"])
+    assert "Gold" in body["commodities"]
+
+
+def test_commodity_filter_reduces_features():
+    if not _db_up():
+        pytest.skip("Postgres not reachable")
+    full = client.get("/layers/mrds").json()
+    if len(full["features"]) < 2:
+        pytest.skip("mrds not ingested")
+    gold = client.get("/layers/mrds", params={"commodity": "Gold"}).json()
+    assert 0 < len(gold["features"]) < len(full["features"])
+
+
 def test_bbox_filter_reduces_features():
     if not _db_up():
         pytest.skip("Postgres not reachable")
