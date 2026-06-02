@@ -16,14 +16,14 @@
 ### 2. Data ingestion (CO — I-70 corridor focus area)  [MVP4]
 _Clip every spatial layer to the 10 focus-area counties (PRD §7.1): Denver, Jefferson, Clear Creek, Gilpin, Park, Summit, Lake, Eagle, Garfield, Mesa. Ingest statewide only where a dataset can't be pre-clipped, then filter on query._
 - [x] **Prerequisite — county clip mask:** Census county boundaries → PostGIS `counties` (region-parameterized via `DownloadRegion`)
-- [ ] Ingest USGS national geologic map DB, clipped to the focus-area counties
+- [x] Ingest USGS national geologic map DB, clipped to the focus-area counties (1,697 SGMC unit polygons)
 - [x] Ingest USGS MRDS records within the focus-area counties (~4,400 sites; spatial-joined to county polygons)
-- [ ] Ingest USGS USMIN records within the focus-area counties
-- [ ] Ingest BLM land boundaries + claim layer for the focus-area counties (with as-of date stamp on every record)
-- [ ] Ingest USFS forest boundaries within the focus-area counties
-- [ ] Ingest Colorado Geological Survey publications metadata + key spatial datasets for the focus-area counties
+- [x] Ingest USGS USMIN records within the focus-area counties (12,763 topo mine features)
+- [x] Ingest BLM land boundaries + claim layer — **ownership done** (1,845 PAD-US polygons w/ as-of date; substitutes BLM, see DATA_SOURCES); **claims deferred to MLRS portal link** (PRD Open-Q #2 — messy PLSS data, low v1 value)
+- [ ] Ingest USFS forest boundaries within the focus-area counties _(deferred until after the desktop map slice)_
+- [ ] Ingest Colorado Geological Survey publications metadata + key spatial datasets for the focus-area counties _(deferred until after the desktop map slice)_
 - [ ] Build a refresh script (manual run; monthly cadence target for land status)
-- [ ] Document license + source for every ingested dataset
+- [~] Document license + source for every ingested dataset — ongoing in `docs/DATA_SOURCES.md` (all ingested layers covered)
 - _Deferred to Phase 4: Texas Bureau of Economic Geology atlas + mineral resources data (revive when Texas re-enters scope)._
 
 ### 3. Spatial query tools  [MVP5]

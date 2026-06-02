@@ -13,20 +13,17 @@ _Last updated: 2026-06-01_
   | MRDS mines | `mrds_sites` | 4,398 | USGS MRDS (national CSV) |
   | USMIN topo features | `usmin_features` | 12,763 | USGS USMIN (per-state) |
   | Geologic units | `geologic_units` | 1,697 | USGS SGMC (per-state) |
+  | Land ownership/manager | `land_ownership` | 1,845 | USGS PAD-US (substitutes BLM) |
 
   Ingestion engine: `backend/src/prospector/ingest/` — region-parameterized around `DownloadRegion` (state + counties; v1 default = `I70_CORRIDOR`). Run via `uv run python -m prospector.ingest {counties|mrds|usmin|geology|all}`. All downloaded data is local/gitignored.
 
-## Next up — BLM land status (subtask 4), then a desktop map slice
+## Next up — minimal desktop MAP SLICE
 
-Decided sequencing: finish core Group 2 data (BLM = **both** ownership + claims), **then** build a minimal MapLibre desktop map showing all layers (also serves as visual ingestion QA). **USFS (subtask 5) and CGS (subtask 6) are intentionally deferred** until after the map slice.
+Core Group 2 data is done (5 layers above). **Decided next step: build a minimal MapLibre GL JS desktop map** that renders the ingested layers (counties, MRDS, USMIN, geology, ownership) — the first visible UI, and a visual QA of the clips. This means: a backend API endpoint serving GeoJSON from PostGIS (e.g. `GET /layers/{name}?bbox=...`) + the React/Vite frontend MapLibre canvas with toggleable overlays. Land-status layer must show the disclaimer when on.
 
-**BLM ownership half is fully scoped + downloaded + validated, ready to build:**
-- Source: **USGS PAD-US 4.1** (deliberate substitution for BLM's fiddly ArcGIS — surfaced + approved). Per-state, region-parameterizable URL: `https://www.sciencebase.gov/catalog/file/get/6759abcfd34edfeb8710a004?name=PADUS4_1_State_{ABBREV}_GDB_KMZ.zip`. CO file (168 MB) already downloaded + extracted to `backend/data/raw/padus/PADUS4_1_StateCO.gdb`.
-- **Use the `PADUS4_1Fee_State_{ABBREV}` layer** (validated: by AREA it's USFS 14.5M ac + BLM 8.45M ac — the right layer; the "Combined" layer is overlapping/messier, not needed).
-- CRS is Albers (ESRI:102039) → **reproject to 4326**. Build like geology (polygon clip-to-union of focus-area counties).
-- Fields to keep (use the decoded `d_` versions): `d_Mang_Name`, `d_Mang_Type`, `d_Own_Type`, `Unit_Nm`, `d_Pub_Access`, and `Src_Date` (→ the mandatory **as-of date stamp**).
+**Then** return to the deferred data: USFS (subtask 5), CGS (subtask 6), refresh script (7).
 
-**BLM claims half — NOT yet sourced.** Only BLM has claims (PAD-US doesn't). PRD flags this data as "messy/lagging." Needs a source hunt (likely BLM MLRS / ArcGIS) + as-of stamping. Treat as its own unit.
+**BLM claims: deferred to a portal link** (decided 2026-06-01, PRD Open-Q #2 — PLSS-based messy data, low v1 value). The Land Status agent/UI will link to BLM's MLRS portal for claim verification rather than ingesting claims. See `docs/DATA_SOURCES.md`.
 
 ## Earlier scope cuts (still in force)
 

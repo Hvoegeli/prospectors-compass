@@ -61,6 +61,14 @@ All geometries are stored in **SRID 4326 (WGS84)** and clipped to the active
 - **Land-status rule:** informational only — answers must carry the disclaimer
   and never make a go/no-go determination (enforced at the agent layer).
 
+### Mining claims — deferred to portal link (not ingested in v1)
+
+Per PRD Open Question #2, BLM mining-claim data is PLSS-based legal records
+(not clean geodata) and notoriously lagging. Decision (2026-06-01): **do not
+ingest claims for v1.** Instead, the Land Status agent/UI surfaces a link to
+BLM's official **MLRS** portal for claim verification. Revisit if claim
+ingestion proves worth the effort later.
+
 ## USGS USMIN (topo mine features)
 
 - **URL:** https://mrdata.usgs.gov/usmin/state/usmin-{STATE}.zip (per-state)
