@@ -1,7 +1,8 @@
 """CLI for local data ingestion.
 
     uv run python -m prospector.ingest counties   # download + load the clip mask
-    uv run python -m prospector.ingest mrds        # USGS mine/prospect points
+    uv run python -m prospector.ingest mrds        # USGS MRDS mine/prospect points
+    uv run python -m prospector.ingest usmin       # USGS USMIN topo mine features
     uv run python -m prospector.ingest geology     # USGS geologic unit polygons
     uv run python -m prospector.ingest all         # clip mask, then every layer
 
@@ -18,6 +19,7 @@ from prospector.ingest.census import ingest_counties
 from prospector.ingest.focus_area import DEFAULT_REGION
 from prospector.ingest.geology import ingest_geology
 from prospector.ingest.mrds import ingest_mrds
+from prospector.ingest.usmin import ingest_usmin
 
 
 def _run_counties() -> None:
@@ -35,6 +37,13 @@ def _run_mrds() -> None:
     print(f"✓ Loaded {count} MRDS sites into PostGIS table 'mrds_sites'.")
 
 
+def _run_usmin() -> None:
+    region = DEFAULT_REGION
+    print(f"Ingesting USMIN features for: {region.name}")
+    count = ingest_usmin(region)
+    print(f"✓ Loaded {count} USMIN features into PostGIS table 'usmin_features'.")
+
+
 def _run_geology() -> None:
     region = DEFAULT_REGION
     print(f"Ingesting geologic units for: {region.name}")
@@ -48,6 +57,7 @@ def main() -> None:
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("counties", help="Download + load the county clip mask")
     sub.add_parser("mrds", help="Download + clip + load USGS MRDS mine points")
+    sub.add_parser("usmin", help="Download + clip + load USGS USMIN topo mine features")
     sub.add_parser("geology", help="Download + clip + load USGS geologic unit polygons")
     sub.add_parser("all", help="Run every ingestion step in order")
     args = parser.parse_args()
@@ -57,11 +67,14 @@ def main() -> None:
         _run_counties()
     elif args.command == "mrds":
         _run_mrds()
+    elif args.command == "usmin":
+        _run_usmin()
     elif args.command == "geology":
         _run_geology()
     elif args.command == "all":
         _run_counties()
         _run_mrds()
+        _run_usmin()
         _run_geology()
 
 

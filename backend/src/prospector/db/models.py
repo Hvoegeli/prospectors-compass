@@ -60,6 +60,33 @@ class MrdsSite(Base):
     )
 
 
+class UsminFeature(Base):
+    """A USGS USMIN mine/prospect feature digitized from a topographic map.
+
+    Source: USGS Prospect- and Mine-Related Features (USMIN), per-state
+    shapefile from https://mrdata.usgs.gov/usmin/. Point features (adits,
+    shafts, prospect pits, etc.). `county_geoid` is assigned by spatial join.
+    No reliable natural key, so a surrogate id is used.
+    """
+
+    __tablename__ = "usmin_features"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    #: USMIN feature id (GDA_ID), kept for provenance; not guaranteed unique here.
+    gda_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    county_geoid: Mapped[str] = mapped_column(String(5), nullable=False, index=True)
+    #: Feature type: Adit / Shaft / Prospect / Mine / Quarry / ...
+    ftr_type: Mapped[str | None] = mapped_column(String, nullable=True)
+    ftr_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    #: Source topo quad name + date (provenance).
+    topo_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    topo_date: Mapped[str | None] = mapped_column(String, nullable=True)
+    remarks: Mapped[str | None] = mapped_column(String, nullable=True)
+    geom: Mapped[object] = mapped_column(
+        Geometry(geometry_type="POINT", srid=WGS84, spatial_index=True)
+    )
+
+
 class GeologicUnit(Base):
     """A geologic map-unit polygon, clipped to the focus area.
 

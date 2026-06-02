@@ -12,6 +12,7 @@ All geometries are stored in **SRID 4326 (WGS84)** and clipped to the active
 |---|---|---|---|
 | County boundaries (clip mask) | US Census Bureau — 2023 Cartographic Boundary Files, county 1:500k | Public domain (US Gov work, 17 U.S.C. §105) | `ingest/census.py` → `counties` |
 | Mine / prospect points | USGS Mineral Resources Data System (MRDS) | Public domain (US Gov work, 17 U.S.C. §105) | `ingest/mrds.py` → `mrds_sites` |
+| Topo mine features | USGS USMIN — Prospect/Mine-Related Features (per-state) | Public domain (US Gov work, 17 U.S.C. §105) | `ingest/usmin.py` → `usmin_features` |
 | Geologic unit polygons | USGS State Geologic Map Compilation (per-state) | Public domain (US Gov work, 17 U.S.C. §105) | `ingest/geology.py` → `geologic_units` |
 
 ---
@@ -38,6 +39,19 @@ All geometries are stored in **SRID 4326 (WGS84)** and clipped to the active
   point geometry, plus the joined `county_geoid`.
 - **Caveat:** MRDS records vary in quality/precision; treat as historical
   context, not ground truth. Surface its `url` for provenance.
+
+## USGS USMIN (topo mine features)
+
+- **URL:** https://mrdata.usgs.gov/usmin/state/usmin-{STATE}.zip (per-state)
+- **Download size:** ~2.4 MB (Colorado).
+- **Source vintage:** 2023 compilation (`USGS_TopoMineSymbols` ver 10).
+- **Geometry:** point features (also a polygon layer for pit/tailings areas,
+  not yet ingested — points only for v1).
+- **Coverage in focus area:** ~12,800 features (Prospect Pit, Adit, Mine Shaft,
+  Quarry, …) clipped from ~43,300 statewide.
+- **County attribution:** spatial join to our county polygons.
+- **vs MRDS:** USMIN = symbols digitized from topo maps (where features *are*);
+  MRDS = deposit records (commodities, production). Complementary.
 
 ## USGS geologic unit polygons (SGMC)
 
