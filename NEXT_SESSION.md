@@ -1,19 +1,37 @@
 # Next Session — Where We Left Off
 
-_Last session: 2026-05-21_
+_Last updated: 2026-06-01_
 
 ## State of the project
 
-- **Branch:** `scope/colorado-i70-corridor` (doc-only scope-change commit; **not yet merged to `main`**). `main` is still at `e4eefed`.
-- **Group 1 (Project setup):** 7 of 8 subtasks complete and merged.
-- **Group 2 (Data ingestion CO — I-70 corridor focus area):** not started. _(Texas dropped from v1 — deferred to Phase 4. CO narrowed to 10 focus-area counties — see PRD §7.1.)_
+- **Branch:** `task/2-data-ingestion-co` (Group 2 in progress; **not merged to `main`**). The scope-change branch was already merged (`main` is at `1e809fe`).
+- **Group 1 (Project setup):** complete except subtask 8 (Anthropic budget alerts — manual web action, see below).
+- **Group 2 (Data ingestion):** 4 of the planned layers done and committed, all with passing integration tests:
+  | Layer | Table | Records | Source |
+  |---|---|---|---|
+  | County clip mask | `counties` | 10 | Census cartographic boundaries |
+  | MRDS mines | `mrds_sites` | 4,398 | USGS MRDS (national CSV) |
+  | USMIN topo features | `usmin_features` | 12,763 | USGS USMIN (per-state) |
+  | Geologic units | `geologic_units` | 1,697 | USGS SGMC (per-state) |
 
-## What changed this session (2026-05-21) — scope cuts
+  Ingestion engine: `backend/src/prospector/ingest/` — region-parameterized around `DownloadRegion` (state + counties; v1 default = `I70_CORRIDOR`). Run via `uv run python -m prospector.ingest {counties|mrds|usmin|geology|all}`. All downloaded data is local/gitignored.
 
-Two scope decisions, applied across all 7 project docs (PRD, TASK_LIST, TESTING_STRATEGY, USER_FLOW, MEMO, presearch, this file):
+## Next up — BLM land status (subtask 4), then a desktop map slice
 
-1. **Texas dropped from v1 → demoted to Phase 4.** Not deleted — TX BEG data, eval cases, and examples are preserved as explicit "deferred to Phase 4" notes, easy to revive.
-2. **Colorado narrowed to the I-70 corridor focus area** — 10 counties (Denver, Jefferson, Clear Creek, Gilpin, Park, Summit, Lake, Eagle, Garfield, Mesa). Defined canonically **once** in PRD §7.1; every other doc references "the I-70 corridor focus area" by name to avoid drift. Rest-of-Colorado is Phase 4. Group 2 ingestion is now county-clipped.
+Decided sequencing: finish core Group 2 data (BLM = **both** ownership + claims), **then** build a minimal MapLibre desktop map showing all layers (also serves as visual ingestion QA). **USFS (subtask 5) and CGS (subtask 6) are intentionally deferred** until after the map slice.
+
+**BLM ownership half is fully scoped + downloaded + validated, ready to build:**
+- Source: **USGS PAD-US 4.1** (deliberate substitution for BLM's fiddly ArcGIS — surfaced + approved). Per-state, region-parameterizable URL: `https://www.sciencebase.gov/catalog/file/get/6759abcfd34edfeb8710a004?name=PADUS4_1_State_{ABBREV}_GDB_KMZ.zip`. CO file (168 MB) already downloaded + extracted to `backend/data/raw/padus/PADUS4_1_StateCO.gdb`.
+- **Use the `PADUS4_1Fee_State_{ABBREV}` layer** (validated: by AREA it's USFS 14.5M ac + BLM 8.45M ac — the right layer; the "Combined" layer is overlapping/messier, not needed).
+- CRS is Albers (ESRI:102039) → **reproject to 4326**. Build like geology (polygon clip-to-union of focus-area counties).
+- Fields to keep (use the decoded `d_` versions): `d_Mang_Name`, `d_Mang_Type`, `d_Own_Type`, `Unit_Nm`, `d_Pub_Access`, and `Src_Date` (→ the mandatory **as-of date stamp**).
+
+**BLM claims half — NOT yet sourced.** Only BLM has claims (PAD-US doesn't). PRD flags this data as "messy/lagging." Needs a source hunt (likely BLM MLRS / ArcGIS) + as-of stamping. Treat as its own unit.
+
+## Earlier scope cuts (still in force)
+
+1. **Texas dropped from v1 → Phase 4** (data/eval/examples preserved as "deferred" notes).
+2. **Colorado narrowed to the I-70 corridor** — 10 counties, defined canonically in PRD §7.1.
 
 ## What's running locally
 
@@ -30,8 +48,7 @@ Postgres is at `localhost:1776`, db `prospector`, user `prospector`, pwd `prospe
 
 ## Still to do / outstanding
 
-- **Merge `scope/colorado-i70-corridor` → `main`** when you're ready to publish the scope change. Doc-only, no code touched. (Left on the branch per the "main stays untouched until you say so" rule.)
-- **Subtask 8 — Anthropic console budget alerts.** Manual web action (carried over from last session).
+- **Subtask 8 — Anthropic console budget alerts.** Manual web action (carried over).
   - Go to console.anthropic.com → Settings → Limits.
   - Set hard cap **$8** and alert at **$5**.
   - Then check the box in `docs/TASK_LIST.md` group 1.
@@ -42,29 +59,16 @@ Postgres is at `localhost:1776`, db `prospector`, user `prospector`, pwd `prospe
 ```bash
 cd "/Users/harrisonvoegeli/Desktop/projects/Unfinished Projects/prospectors-compass"
 docker compose up -d                       # postgres (host port 1776)
-cd backend && uv run pytest                # sanity (expect 10/10 green)
+cd backend && uv run pytest                # sanity (expect 27 green)
 ```
 
 > **If `uv run pytest` fails to spawn:** the project was moved, so the venv's baked paths are stale. Run `rm -rf .venv && uv sync` from `backend/` to rebuild it. (See `docs/ERROR_FIX_LOG.md`.)
+>
+> Integration tests skip if their data isn't ingested. To repopulate the DB: `uv run python -m prospector.ingest all`.
 
-Then in Claude Code, run **`/task`** to pick up Group 2.
+Then continue with **BLM land status** — see "Next up" above for the fully-scoped PAD-US ownership build, then the claims half.
 
-## What Group 2 looks like
-
-**Group 2 — Data ingestion (CO — I-70 corridor focus area)** [[MVP4](docs/PRD.md)] has 8 subtasks. Every spatial layer is clipped to the 10 focus-area counties (Denver, Jefferson, Clear Creek, Gilpin, Park, Summit, Lake, Eagle, Garfield, Mesa — PRD §7.1). Per `docs/TASK_LIST.md`:
-
-1. Ingest USGS national geologic map DB for CO
-2. Ingest USGS MRDS records for CO
-3. Ingest USGS USMIN records for CO
-4. Ingest BLM land boundaries + claim layer (with as-of date stamp)
-5. Ingest USFS forest boundaries
-6. Ingest Colorado Geological Survey publications metadata + key spatial datasets
-7. Build a refresh script (manual run; monthly cadence target for land status)
-8. Document license + source for every ingested dataset
-
-_Deferred to Phase 4: Texas Bureau of Economic Geology ingest (revive when Texas re-enters scope)._
-
-Clipping to 10 counties cuts this well below a statewide pull, but it's still a sizable download — expect a multi-session effort. Realistic first session: get one dataset (USGS national geologic map, clipped to the focus-area counties) end-to-end — find the source, download, clip/parse, write a SQLAlchemy model, ingest into PostGIS, verify with a unit test. Once that pipeline is proven, the remaining datasets follow the same pattern.
+_Group 2 remaining per `docs/TASK_LIST.md`: subtask 4 (BLM, in progress), 5 (USFS, deferred), 6 (CGS, deferred), 7 (refresh script), 8 (license docs — ongoing in `docs/DATA_SOURCES.md`)._
 
 ## Carry-over open questions (from `docs/MEMO.md`)
 
