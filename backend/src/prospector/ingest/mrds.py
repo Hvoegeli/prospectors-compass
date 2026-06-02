@@ -25,6 +25,7 @@ from prospector.db.models import MrdsSite
 from prospector.ingest.census import load_region_counties
 from prospector.ingest.focus_area import DEFAULT_REGION, DownloadRegion
 from prospector.ingest.storage import RAW_DIR, download_file
+from prospector.ingest.util import na_to_none
 
 log = logging.getLogger(__name__)
 
@@ -91,11 +92,6 @@ def load_region_mrds(region: DownloadRegion = DEFAULT_REGION) -> gpd.GeoDataFram
     return joined[keep]
 
 
-def _clean(value: object) -> str | None:
-    """Pandas NaN -> None; everything else -> str (DB stores text or NULL)."""
-    return None if value is None or pd.isna(value) else str(value)
-
-
 def ingest_mrds(region: DownloadRegion = DEFAULT_REGION) -> int:
     """Download + clip + store MRDS sites for ``region`` in PostGIS. Idempotent.
 
@@ -112,13 +108,13 @@ def ingest_mrds(region: DownloadRegion = DEFAULT_REGION) -> int:
             session.add(
                 MrdsSite(
                     dep_id=str(row.dep_id),
-                    site_name=_clean(row.site_name),
-                    url=_clean(row.url),
+                    site_name=na_to_none(row.site_name),
+                    url=na_to_none(row.url),
                     county_geoid=str(row.county_geoid),
-                    dev_stat=_clean(row.dev_stat),
-                    commod1=_clean(row.commod1),
-                    commod2=_clean(row.commod2),
-                    commod3=_clean(row.commod3),
+                    dev_stat=na_to_none(row.dev_stat),
+                    commod1=na_to_none(row.commod1),
+                    commod2=na_to_none(row.commod2),
+                    commod3=na_to_none(row.commod3),
                     geom=from_shape(row.geometry, srid=WGS84),
                 )
             )

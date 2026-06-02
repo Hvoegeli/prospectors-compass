@@ -7,7 +7,7 @@ All geometries are stored in SRID 4326 (WGS84 lat/lon) — the project standard
 from __future__ import annotations
 
 from geoalchemy2 import Geometry
-from sqlalchemy import String
+from sqlalchemy import Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from prospector.db.base import Base
@@ -57,4 +57,38 @@ class MrdsSite(Base):
     commod3: Mapped[str | None] = mapped_column(String, nullable=True)
     geom: Mapped[object] = mapped_column(
         Geometry(geometry_type="POINT", srid=WGS84, spatial_index=True)
+    )
+
+
+class GeologicUnit(Base):
+    """A geologic map-unit polygon, clipped to the focus area.
+
+    Source: USGS State Geologic Map Compilation (per-state shapefile from
+    https://mrdata.usgs.gov/geology/state/). Polygons are enriched from the
+    package's unit lookup (name, age, lithology) via `unit_link`.
+
+    A unit spans many counties, so this is a coverage layer with no single
+    county tag. Re-ingest is scoped by `state_fips` (geology is per-state).
+    """
+
+    __tablename__ = "geologic_units"
+
+    #: Surrogate key — a unit_link repeats across many polygons, so it's not unique.
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    state_fips: Mapped[str] = mapped_column(String(2), nullable=False, index=True)
+    #: Join key to the unit lookup, e.g. "COCAam;0".
+    unit_link: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    orig_label: Mapped[str | None] = mapped_column(String, nullable=True)
+    #: Generalized lithology, e.g. "Igneous, intrusive".
+    generalized_lith: Mapped[str | None] = mapped_column(String, nullable=True)
+    #: Enriched from the unit lookup table.
+    unit_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    unit_age: Mapped[str | None] = mapped_column(String, nullable=True)
+    rocktype1: Mapped[str | None] = mapped_column(String, nullable=True)
+    rocktype2: Mapped[str | None] = mapped_column(String, nullable=True)
+    rocktype3: Mapped[str | None] = mapped_column(String, nullable=True)
+    unit_desc: Mapped[str | None] = mapped_column(String, nullable=True)
+    url: Mapped[str | None] = mapped_column(String, nullable=True)
+    geom: Mapped[object] = mapped_column(
+        Geometry(geometry_type="MULTIPOLYGON", srid=WGS84, spatial_index=True)
     )

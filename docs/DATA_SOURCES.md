@@ -12,6 +12,7 @@ All geometries are stored in **SRID 4326 (WGS84)** and clipped to the active
 |---|---|---|---|
 | County boundaries (clip mask) | US Census Bureau — 2023 Cartographic Boundary Files, county 1:500k | Public domain (US Gov work, 17 U.S.C. §105) | `ingest/census.py` → `counties` |
 | Mine / prospect points | USGS Mineral Resources Data System (MRDS) | Public domain (US Gov work, 17 U.S.C. §105) | `ingest/mrds.py` → `mrds_sites` |
+| Geologic unit polygons | USGS State Geologic Map Compilation (per-state) | Public domain (US Gov work, 17 U.S.C. §105) | `ingest/geology.py` → `geologic_units` |
 
 ---
 
@@ -37,6 +38,20 @@ All geometries are stored in **SRID 4326 (WGS84)** and clipped to the active
   point geometry, plus the joined `county_geoid`.
 - **Caveat:** MRDS records vary in quality/precision; treat as historical
   context, not ground truth. Surface its `url` for provenance.
+
+## USGS geologic unit polygons (SGMC)
+
+- **URL:** https://mrdata.usgs.gov/geology/state/shp/{STATE}.zip (per-state, e.g. `CO.zip`)
+- **Download size:** ~8.1 MB (Colorado).
+- **Source vintage:** file dated 2022-01-12; compiled from older state maps
+  (each polygon carries `SRC_URL`/`REF_ID` to its source publication).
+- **Coverage in focus area:** ~1,700 unit polygons (clipped from ~7,300 statewide).
+- **Enrichment:** polygons joined to the package's `*_units.csv` on `unit_link`
+  for unit name, age, lithology (`rocktype1-3`), and description.
+- **Clip:** intersected against the *dissolved union* of the region's counties
+  (a unit spans many counties, so it's a coverage layer with no single county).
+- **Note:** per-state download honors "localized downloads" — only the chosen
+  state is fetched, not the ~1 GB national SGMC geodatabase.
 
 ---
 

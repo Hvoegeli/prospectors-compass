@@ -51,6 +51,8 @@ class DownloadRegion:
 
     name: str
     state_fips: str
+    #: USPS state abbreviation, e.g. "CO" — needed for per-state source URLs.
+    state_abbrev: str
     counties: tuple[County, ...]
 
     def geoids(self) -> list[str]:
@@ -71,6 +73,7 @@ def _co(name: str, fips: str) -> County:
 I70_CORRIDOR = DownloadRegion(
     name="Colorado — I-70 Corridor (v1 default)",
     state_fips=COLORADO_STATE_FIPS,
+    state_abbrev="CO",
     counties=(
         _co("Denver", "031"),
         _co("Jefferson", "059"),

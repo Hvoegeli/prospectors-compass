@@ -51,6 +51,7 @@ def test_region_is_reusable_for_other_states():
     montana = DownloadRegion(
         name="Montana — test",
         state_fips="30",
+        state_abbrev="MT",
         counties=(County("Lewis and Clark", "049", "30"),),
     )
     assert montana.geoids() == ["30049"]
