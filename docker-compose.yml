@@ -9,7 +9,9 @@ services:
       POSTGRES_PASSWORD: prospector
       POSTGRES_DB: prospector
     ports:
-      - "5432:5432"
+      # Host port 1776 (5432 is taken by another project on this machine);
+      # container still speaks 5432 internally.
+      - "1776:5432"
     volumes:
       - prospector_pgdata:/var/lib/postgresql/data
       - ./infra/db/init:/docker-entrypoint-initdb.d:ro

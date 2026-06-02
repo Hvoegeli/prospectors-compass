@@ -24,7 +24,9 @@ docker compose ps                # is the postgres container still healthy?
 docker compose up -d             # bring it back up if stopped
 ```
 
-Postgres is at `localhost:5432`, db `prospector`, user `prospector`, pwd `prospector`. Both PostGIS 3.4.3 and pgvector 0.8.2 are loaded.
+Postgres is at `localhost:1776`, db `prospector`, user `prospector`, pwd `prospector`. Both PostGIS 3.4.3 and pgvector 0.8.2 are loaded.
+
+> **Port note (2026-06-01):** Host port is **1776**, not 5432 — 5432 was already taken by another project's container + an ssh tunnel on this machine. The container still speaks 5432 internally; `docker-compose.yml`, `.env`, and `config.py` are all set to 1776.
 
 ## Still to do / outstanding
 
@@ -38,10 +40,12 @@ Postgres is at `localhost:5432`, db `prospector`, user `prospector`, pwd `prospe
 ## To resume
 
 ```bash
-cd /Users/harrisonvoegeli/projects/prospectors-compass
-docker compose up -d                       # postgres
+cd "/Users/harrisonvoegeli/Desktop/projects/Unfinished Projects/prospectors-compass"
+docker compose up -d                       # postgres (host port 1776)
 cd backend && uv run pytest                # sanity (expect 10/10 green)
 ```
+
+> **If `uv run pytest` fails to spawn:** the project was moved, so the venv's baked paths are stale. Run `rm -rf .venv && uv sync` from `backend/` to rebuild it. (See `docs/ERROR_FIX_LOG.md`.)
 
 Then in Claude Code, run **`/task`** to pick up Group 2.
 

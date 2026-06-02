@@ -15,7 +15,7 @@ class Settings(BaseSettings):
 
     anthropic_api_key: str = Field(default="")
 
-    database_url: str = "postgresql://prospector:prospector@localhost:5432/prospector"
+    database_url: str = "postgresql://prospector:prospector@localhost:1776/prospector"
     pgvector_dim: int = 1536
 
     langsmith_api_key: str = ""
