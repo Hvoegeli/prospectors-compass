@@ -14,6 +14,7 @@ All geometries are stored in **SRID 4326 (WGS84)** and clipped to the active
 | Mine / prospect points | USGS Mineral Resources Data System (MRDS) | Public domain (US Gov work, 17 U.S.C. §105) | `ingest/mrds.py` → `mrds_sites` |
 | Topo mine features | USGS USMIN — Prospect/Mine-Related Features (per-state) | Public domain (US Gov work, 17 U.S.C. §105) | `ingest/usmin.py` → `usmin_features` |
 | Geologic unit polygons | USGS State Geologic Map Compilation (per-state) | Public domain (US Gov work, 17 U.S.C. §105) | `ingest/geology.py` → `geologic_units` |
+| Land manager / ownership | USGS PAD-US 4.1 Fee layer (per-state) — **substitutes BLM** (see note) | Public domain (US Gov work, 17 U.S.C. §105) | `ingest/padus.py` → `land_ownership` |
 
 ---
 
@@ -39,6 +40,26 @@ All geometries are stored in **SRID 4326 (WGS84)** and clipped to the active
   point geometry, plus the joined `county_geoid`.
 - **Caveat:** MRDS records vary in quality/precision; treat as historical
   context, not ground truth. Surface its `url` for provenance.
+
+## USGS PAD-US (land manager / ownership)
+
+- **URL:** `https://www.sciencebase.gov/catalog/file/get/6759abcfd34edfeb8710a004?name=PADUS4_1_State_{STATE}_GDB_KMZ.zip` (per-state GeoDatabase)
+- **Download size:** ~168 MB (Colorado); a FileGDB, extracted locally.
+- **Layer used:** `PADUS4_1Fee_State_{STATE}` (fee ownership/management). Chosen
+  over the "Combined" layer: by AREA the Fee layer is dominated by the federal
+  lands that matter (Forest Service 14.5M ac, BLM 8.45M ac statewide).
+- **Coverage in focus area:** ~1,845 polygons; FS + BLM dominate by area.
+- **Source vintage / as-of:** per-record `Src_Date` stored as `as_of_date`
+  (PRD §9.4 — every land-status record carries an as-of stamp).
+- **CRS:** PAD-US Albers (ESRI:102039) → reprojected to 4326.
+- **Geometry repair:** PAD-US has invalid (nested-shell) polygons; `.make_valid()`
+  is applied before clipping (see ERROR_FIX_LOG).
+- **⚠️ Source substitution:** the spec named "BLM." We use USGS PAD-US instead —
+  same manager/owner info, cleaner per-state public-domain form, consistent with
+  our USGS pipeline. Surfaced and approved 2026-06-01. BLM remains the source for
+  the (separate, pending) mining-claims layer, which PAD-US does not cover.
+- **Land-status rule:** informational only — answers must carry the disclaimer
+  and never make a go/no-go determination (enforced at the agent layer).
 
 ## USGS USMIN (topo mine features)
 

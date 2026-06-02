@@ -42,6 +42,7 @@ When an error or fix takes more than 5 minutes to diagnose, append an entry belo
 - **Function-call argument truncation:** if the model returns a tool call with a giant JSON arg, watch for serialization issues. Prefer multiple small tools over one mega-tool.
 
 ### PostGIS
+- **Invalid source geometries (nested shells / self-intersections):** real-world polygon datasets (e.g. PAD-US federal-land boundaries) ship invalid geometries that silently break `ST_Within`/`ST_Intersects`. Run geopandas `.make_valid()` on the source BEFORE clipping/inserting, then coerce results to MultiPolygon (make_valid can yield a GeometryCollection). Verify with `SELECT count(*) WHERE NOT ST_IsValid(geom)` = 0. (See `ingest/padus.py`.)
 - **`ST_Intersects` slow without GIST index:** every spatial table needs `CREATE INDEX ... USING GIST (geom)`. Verify with `EXPLAIN ANALYZE`.
 - **SRID mismatch:** mixing SRID 4326 (WGS84) and SRID 3857 (web mercator) silently returns empty results. Standardize on 4326 storage; transform on the fly when needed.
 - **Watershed delineation expensive:** `ST_DWithin` over a DEM-derived flow grid can take seconds. Pre-compute watersheds for known drainage basins where possible.

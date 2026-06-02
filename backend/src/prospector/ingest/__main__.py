@@ -4,6 +4,7 @@
     uv run python -m prospector.ingest mrds        # USGS MRDS mine/prospect points
     uv run python -m prospector.ingest usmin       # USGS USMIN topo mine features
     uv run python -m prospector.ingest geology     # USGS geologic unit polygons
+    uv run python -m prospector.ingest ownership   # PAD-US land manager/owner polygons
     uv run python -m prospector.ingest all         # clip mask, then every layer
 
 Runs against the v1 default region (the I-70 corridor). Later, the county-picker
@@ -19,6 +20,7 @@ from prospector.ingest.census import ingest_counties
 from prospector.ingest.focus_area import DEFAULT_REGION
 from prospector.ingest.geology import ingest_geology
 from prospector.ingest.mrds import ingest_mrds
+from prospector.ingest.padus import ingest_ownership
 from prospector.ingest.usmin import ingest_usmin
 
 
@@ -51,6 +53,13 @@ def _run_geology() -> None:
     print(f"✓ Loaded {count} geologic units into PostGIS table 'geologic_units'.")
 
 
+def _run_ownership() -> None:
+    region = DEFAULT_REGION
+    print(f"Ingesting land ownership for: {region.name}")
+    count = ingest_ownership(region)
+    print(f"✓ Loaded {count} land-ownership polygons into PostGIS table 'land_ownership'.")
+
+
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     parser = argparse.ArgumentParser(prog="prospector.ingest")
@@ -59,6 +68,7 @@ def main() -> None:
     sub.add_parser("mrds", help="Download + clip + load USGS MRDS mine points")
     sub.add_parser("usmin", help="Download + clip + load USGS USMIN topo mine features")
     sub.add_parser("geology", help="Download + clip + load USGS geologic unit polygons")
+    sub.add_parser("ownership", help="Download + clip + load PAD-US land manager/owner polygons")
     sub.add_parser("all", help="Run every ingestion step in order")
     args = parser.parse_args()
 
@@ -71,11 +81,14 @@ def main() -> None:
         _run_usmin()
     elif args.command == "geology":
         _run_geology()
+    elif args.command == "ownership":
+        _run_ownership()
     elif args.command == "all":
         _run_counties()
         _run_mrds()
         _run_usmin()
         _run_geology()
+        _run_ownership()
 
 
 if __name__ == "__main__":

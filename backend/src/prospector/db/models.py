@@ -60,6 +60,39 @@ class MrdsSite(Base):
     )
 
 
+class LandOwnership(Base):
+    """A land parcel's surface manager/owner, clipped to the focus area.
+
+    Source: USGS PAD-US 4.1 Fee layer (https://www.usgs.gov/...pad-us). Answers
+    "who manages this ground?" (BLM / Forest Service / NPS / state / private) —
+    the basis for land-status surfacing. Coverage layer, re-ingest scoped by
+    `state_fips`.
+
+    NOTE: this is informational only. Land-status ANSWERS must always carry the
+    disclaimer and never make a go/no-go determination (enforced at the agent
+    layer). `as_of_date` is the per-record source date (PRD §9.4 requirement).
+    """
+
+    __tablename__ = "land_ownership"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    state_fips: Mapped[str] = mapped_column(String(2), nullable=False, index=True)
+    #: Decoded manager name, e.g. "Bureau of Land Management", "Forest Service".
+    manager_name: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    #: Decoded manager type, e.g. "Federal", "State", "Local", "Private".
+    manager_type: Mapped[str | None] = mapped_column(String, nullable=True)
+    owner_type: Mapped[str | None] = mapped_column(String, nullable=True)
+    #: Specific unit name (forest, WMA, park, …) where present.
+    unit_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    #: Public access category: Open / Restricted / Closed / Unknown.
+    public_access: Mapped[str | None] = mapped_column(String, nullable=True)
+    #: Per-record source date (the mandatory "as-of" stamp for land status).
+    as_of_date: Mapped[str | None] = mapped_column(String, nullable=True)
+    geom: Mapped[object] = mapped_column(
+        Geometry(geometry_type="MULTIPOLYGON", srid=WGS84, spatial_index=True)
+    )
+
+
 class UsminFeature(Base):
     """A USGS USMIN mine/prospect feature digitized from a topographic map.
 
