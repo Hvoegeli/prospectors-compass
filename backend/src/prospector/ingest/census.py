@@ -12,11 +12,9 @@ License: public domain (US Government work, 17 U.S.C. §105).
 from __future__ import annotations
 
 import logging
-import os
 from pathlib import Path
 
 import geopandas as gpd
-import httpx
 from geoalchemy2.shape import from_shape
 from shapely.geometry import MultiPolygon
 from sqlalchemy import delete
@@ -24,7 +22,7 @@ from sqlalchemy import delete
 from prospector.db.base import Base, SessionLocal, engine
 from prospector.db.models import County as CountyRow
 from prospector.ingest.focus_area import DEFAULT_REGION, DownloadRegion
-from prospector.ingest.storage import RAW_DIR, ensure_dir
+from prospector.ingest.storage import RAW_DIR, download_file
 
 log = logging.getLogger(__name__)
 
@@ -36,33 +34,8 @@ WGS84 = 4326
 
 
 def download_county_boundaries(*, force: bool = False) -> Path:
-    """Download the national county boundary zip to local cache; return its path.
-
-    Cached: skips the download if the file already exists unless ``force=True``.
-    """
-    if _LOCAL_ZIP.exists() and not force:
-        log.info("County boundaries already cached at %s", _LOCAL_ZIP)
-        return _LOCAL_ZIP
-
-    ensure_dir(_LOCAL_ZIP.parent)
-    log.info("Downloading county boundaries from %s", COUNTY_BOUNDARIES_URL)
-    # Download to a .part file, then atomically rename on success — so an
-    # interrupted download can never leave a truncated file in the cache path
-    # that later runs would silently reuse.
-    part = _LOCAL_ZIP.with_name(_LOCAL_ZIP.name + ".part")
-    try:
-        with httpx.stream(
-            "GET", COUNTY_BOUNDARIES_URL, follow_redirects=True, timeout=120
-        ) as r:
-            r.raise_for_status()
-            with open(part, "wb") as f:
-                for chunk in r.iter_bytes(chunk_size=1 << 16):
-                    f.write(chunk)
-        os.replace(part, _LOCAL_ZIP)
-    finally:
-        part.unlink(missing_ok=True)
-    log.info("Saved %s (%d bytes)", _LOCAL_ZIP, _LOCAL_ZIP.stat().st_size)
-    return _LOCAL_ZIP
+    """Download the national county boundary zip to local cache; return its path."""
+    return download_file(COUNTY_BOUNDARIES_URL, _LOCAL_ZIP, force=force)
 
 
 def load_region_counties(region: DownloadRegion = DEFAULT_REGION) -> gpd.GeoDataFrame:

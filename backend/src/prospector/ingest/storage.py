@@ -6,7 +6,13 @@ downloads, never the data (see .gitignore: ``backend/data/`` is ignored).
 
 from __future__ import annotations
 
+import logging
+import os
 from pathlib import Path
+
+import httpx
+
+log = logging.getLogger(__name__)
 
 #: backend/ — this file is backend/src/prospector/ingest/storage.py
 BACKEND_ROOT = Path(__file__).resolve().parents[3]
@@ -20,3 +26,30 @@ def ensure_dir(path: Path) -> Path:
     """Create ``path`` (and parents) if needed; return it."""
     path.mkdir(parents=True, exist_ok=True)
     return path
+
+
+def download_file(url: str, dest: Path, *, force: bool = False, timeout: float = 180) -> Path:
+    """Stream ``url`` to ``dest``, atomically. Returns ``dest``.
+
+    Cached: skips the download if ``dest`` already exists unless ``force=True``.
+    Streams to a ``.part`` file and renames on success, so an interrupted
+    download can never leave a truncated file at ``dest`` that later runs reuse.
+    """
+    if dest.exists() and not force:
+        log.info("Already cached: %s", dest)
+        return dest
+
+    ensure_dir(dest.parent)
+    log.info("Downloading %s", url)
+    part = dest.with_name(dest.name + ".part")
+    try:
+        with httpx.stream("GET", url, follow_redirects=True, timeout=timeout) as r:
+            r.raise_for_status()
+            with open(part, "wb") as f:
+                for chunk in r.iter_bytes(chunk_size=1 << 16):
+                    f.write(chunk)
+        os.replace(part, dest)
+    finally:
+        part.unlink(missing_ok=True)
+    log.info("Saved %s (%d bytes)", dest, dest.stat().st_size)
+    return dest
