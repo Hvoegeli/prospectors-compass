@@ -32,9 +32,13 @@ def download_file(url: str, dest: Path, *, force: bool = False, timeout: float =
     """Stream ``url`` to ``dest``, atomically. Returns ``dest``.
 
     Cached: skips the download if ``dest`` already exists unless ``force=True``.
+    Setting ``PROSPECTOR_FORCE_DOWNLOAD=1`` forces a fresh download globally — the
+    refresh command uses this to re-pull every source without re-plumbing each
+    ingester (see ``prospector.ingest refresh``).
     Streams to a ``.part`` file and renames on success, so an interrupted
     download can never leave a truncated file at ``dest`` that later runs reuse.
     """
+    force = force or os.getenv("PROSPECTOR_FORCE_DOWNLOAD") == "1"
     if dest.exists() and not force:
         log.info("Already cached: %s", dest)
         return dest

@@ -20,10 +20,10 @@ _Clip every spatial layer to the 10 focus-area counties (PRD §7.1): Denver, Jef
 - [x] Ingest USGS MRDS records within the focus-area counties (~4,400 sites; spatial-joined to county polygons)
 - [x] Ingest USGS USMIN records within the focus-area counties (12,763 topo mine features)
 - [x] Ingest BLM land boundaries + claim layer — **ownership done** (1,845 PAD-US polygons w/ as-of date; substitutes BLM, see DATA_SOURCES); **claims deferred to MLRS portal link** (PRD Open-Q #2 — messy PLSS data, low v1 value)
-- [ ] Ingest USFS forest boundaries within the focus-area counties _(deferred until after the desktop map slice)_
-- [ ] Ingest Colorado Geological Survey publications metadata + key spatial datasets for the focus-area counties _(deferred until after the desktop map slice)_
-- [ ] Build a refresh script (manual run; monthly cadence target for land status)
-- [~] Document license + source for every ingested dataset — ongoing in `docs/DATA_SOURCES.md` (all ingested layers covered)
+- [x] Ingest USFS forest boundaries within the focus-area counties — Administrative Forest envelopes (6 forests) → `admin_forests` (named-forest context for per-forest prospecting rules; complements PAD-US managed-land parcels)
+- [x] Ingest Colorado Geological Survey key spatial datasets for the focus-area counties — Historic Metal Mining Districts (157) → `mining_districts`; Mineral Resource Potential (7,378) → `mineral_potential`; Abandoned Mine Land hazards (4,852) → `aml_hazards`. _(Coal mines skipped — not a prospecting target.)_
+- [x] Build a refresh script (manual run; monthly cadence target for land status) — `uv run python -m prospector.ingest refresh` (forces fresh re-download of every source, then stamps `data/processed/last_refresh.txt`)
+- [x] Document license + source for every ingested dataset — `docs/DATA_SOURCES.md` (all 11 ingested layers covered, incl. CGS licensing note)
 - _Deferred to Phase 4: Texas Bureau of Economic Geology atlas + mineral resources data (revive when Texas re-enters scope)._
 
 ### 3. Spatial query tools  [MVP5]
