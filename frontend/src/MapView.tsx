@@ -39,7 +39,24 @@ function layerSpec(id: string): LayerSpecification {
         id,
         source,
         type: 'fill',
-        paint: { 'fill-color': '#64748b', 'fill-opacity': 0.18, 'fill-outline-color': '#475569' },
+        paint: {
+          // Color by generalized lithology, like a real geologic map.
+          'fill-color': [
+            'match',
+            ['get', 'generalized_lith'],
+            'Igneous, intrusive', '#e388a3',
+            'Igneous, volcanic', '#d1603d',
+            'Metamorphic, undifferentiated', '#9b7cb6',
+            'Sedimentary, clastic', '#d9c77e',
+            'Sedimentary, carbonate', '#7fb5c9',
+            'Sedimentary, undifferentiated', '#c9b97e',
+            'Unconsolidated, undifferentiated', '#efe7b0',
+            'Water', '#4a90d9',
+            '#94a3b8',
+          ],
+          'fill-opacity': 0.5,
+          'fill-outline-color': '#334155',
+        },
       }
     case 'ownership':
       return {
@@ -91,13 +108,28 @@ function esc(s: string): string {
   )
 }
 
-function popupHtml(layerId: string, props: Record<string, unknown>): string {
-  const skip = new Set(['id'])
-  const rows = Object.entries(props)
+const LAYER_LABEL: Record<string, string> = Object.fromEntries(
+  LAYERS.map((l) => [l.id, l.label]),
+)
+
+function featureRows(props: Record<string, unknown>): string {
+  const skip = new Set(['id', 'state_fips'])
+  return Object.entries(props)
     .filter(([k, v]) => !skip.has(k) && v !== null && v !== '')
     .map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(String(v))}</td></tr>`)
     .join('')
-  return `<div class="popup"><h4>${esc(layerId)}</h4><table>${rows}</table></div>`
+}
+
+// One section per layer present at the click — so a single click shows the
+// rock type, land manager, any mine, and the road all at once.
+function popupHtml(features: maplibregl.MapGeoJSONFeature[]): string {
+  const sections = features
+    .map((f) => {
+      const label = LAYER_LABEL[f.layer.id] ?? f.layer.id
+      return `<div class="popup-sec"><h4>${esc(label)}</h4><table>${featureRows(f.properties ?? {})}</table></div>`
+    })
+    .join('')
+  return `<div class="popup">${sections}</div>`
 }
 
 type Facets = { commodities: string[]; deposit_types: string[] }
@@ -185,13 +217,16 @@ export default function MapView() {
       ]
       const feats = map.queryRenderedFeatures(box, { layers: LAYERS.map((l) => l.id) })
       if (!feats.length) return
-      // Prefer specific point layers (the mines you're targeting) over the
-      // coverage polygons beneath them, so clicking near a dot shows the dot.
-      const priority = ['mrds', 'usmin', 'ownership', 'counties', 'geology']
-      feats.sort((a, b) => priority.indexOf(a.layer.id) - priority.indexOf(b.layer.id))
-      new maplibregl.Popup({ maxWidth: '320px' })
+      // Show one section per layer present (rock, land manager, mine, road),
+      // ordered most-specific first.
+      const order = ['mrds', 'usmin', 'roads', 'geology', 'ownership', 'counties']
+      const picked = order
+        .map((id) => feats.find((f) => f.layer.id === id))
+        .filter((f): f is maplibregl.MapGeoJSONFeature => f !== undefined)
+      if (!picked.length) return
+      new maplibregl.Popup({ maxWidth: '340px' })
         .setLngLat(e.lngLat)
-        .setHTML(popupHtml(feats[0].layer.id, feats[0].properties ?? {}))
+        .setHTML(popupHtml(picked))
         .addTo(map)
     })
 
