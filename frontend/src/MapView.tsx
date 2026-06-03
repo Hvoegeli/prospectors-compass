@@ -218,11 +218,71 @@ const LAYER_LABEL: Record<string, string> = Object.fromEntries(
   LAYERS.map((l) => [l.id, l.label]),
 )
 
+// Human-readable popup labels for raw DB column names. Anything not listed falls
+// back to a generic prettifier (underscores → spaces, Title Case).
+const PROP_LABELS: Record<string, string> = {
+  url: 'Source',
+  web_page: 'Report (PDF)',
+  unit_name: 'Unit Name',
+  unit_age: 'Unit Age',
+  unit_link: 'Unit Link',
+  unit_desc: 'Description',
+  orig_label: 'Map Label',
+  generalized_lith: 'Generalized Lithology',
+  rocktype1: 'Rock Type 1',
+  rocktype2: 'Rock Type 2',
+  rocktype3: 'Rock Type 3',
+  manager_name: 'Manager',
+  manager_type: 'Manager Type',
+  owner_type: 'Owner Type',
+  public_access: 'Public Access',
+  as_of_date: 'As-of Date',
+  county_geoid: 'County',
+  county_1: 'County',
+  county_2: 'County (2nd)',
+  dev_stat: 'Development Status',
+  dep_type: 'Deposit Type',
+  commod1: 'Commodity 1',
+  commod2: 'Commodity 2',
+  commod3: 'Commodity 3',
+  site_name: 'Site Name',
+  ftr_type: 'Feature Type',
+  ftr_name: 'Feature Name',
+  topo_name: 'Topo Quad',
+  topo_date: 'Topo Date',
+  road_class: 'Road Class',
+  forest_name: 'Forest',
+  forest_code: 'Forest Code',
+  hazard_kind: 'Hazard Kind',
+  feature_type: 'Feature Type',
+  haz_rating: 'Hazard Rating',
+  env_rating: 'Environmental Rating',
+  au_placer: 'Placer Gold Potential',
+  pegmatite: 'Pegmatite Potential',
+  corundum: 'Corundum Potential',
+  rare_earth: 'Rare Earth Potential',
+  fluorite: 'Fluorite Potential',
+  formation: 'Formation',
+  quad: 'Quadrangle',
+}
+
+function prettyLabel(key: string): string {
+  return PROP_LABELS[key] ?? key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
+// URL-valued fields become a compact link (a raw URL would overflow the popup).
+function valueCell(value: string): string {
+  if (/^https?:\/\//i.test(value)) {
+    return `<a href="${esc(value)}" target="_blank" rel="noreferrer">Open ↗</a>`
+  }
+  return esc(value)
+}
+
 function featureRows(props: Record<string, unknown>): string {
   const skip = new Set(['id', 'state_fips'])
   return Object.entries(props)
     .filter(([k, v]) => !skip.has(k) && v !== null && v !== '')
-    .map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(String(v))}</td></tr>`)
+    .map(([k, v]) => `<tr><td>${esc(prettyLabel(k))}</td><td>${valueCell(String(v))}</td></tr>`)
     .join('')
 }
 

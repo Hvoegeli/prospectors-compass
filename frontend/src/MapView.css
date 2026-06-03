@@ -147,6 +147,7 @@
 }
 
 .popup table {
+  width: 100%;
   border-collapse: collapse;
   font: 12px/1.3 system-ui, sans-serif;
 }
@@ -159,6 +160,13 @@
 .popup td:first-child {
   color: #64748b;
   white-space: nowrap;
+}
+
+/* Value cell: wrap long text and break long unbroken tokens (URLs) so nothing
+   spills outside the popup box. */
+.popup td:last-child {
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .popup h4 {
