@@ -28,6 +28,14 @@ When an error or fix takes more than 5 minutes to diagnose, append an entry belo
 **Fix:** Rebuilt the venv in its new location: `rm -rf .venv && uv sync`. Regenerated all console scripts (`pytest`, `ruff`, `uvicorn`, …) with correct shebangs. Also added `[tool.uv] default-groups = ["dev"]` so `uv run pytest` resolves the dev group without `--group dev`.
 **Prevention:** After moving a project folder, always `rm -rf .venv && uv sync` before running anything. Better: don't commit the venv; treat it as disposable. Stale absolute paths in `NEXT_SESSION.md` were a tell — the documented `cd` path no longer existed.
 
+### 2026-06-03 — ArcGIS REST pagination returns more rows than exist (duplicates)
+
+**Error:** Paging the CGS Mineral Resource Potential MapServer with `resultOffset` fetched **22,733** features for a bbox whose `returnCountOnly` was **19,383** — i.e. duplicate rows, with the matching risk of silently *omitted* rows.
+**Context:** `ingest/cgs.py` `_fetch_potential_features`, paginating a MapServer `/query` at 1000 records/page to pull the focus-area subset.
+**Root cause:** ArcGIS `resultOffset`/`resultRecordCount` paging is only stable when the query has a deterministic sort. Without `orderByFields`, the server may order rows differently on each page, so some records land on two pages and others on none. The final dataset happened to be duplicate-free only because the duplicates fell in the bbox margin and were dropped by the county-union clip — luck, not correctness.
+**Fix:** Pin `orderByFields=OBJECTID` on every page request (service reports `supportsPagination` + `supportsOrderBy` = true). Re-ran: identical 7,378-row output, now provably stable.
+**Prevention:** Any time you page an ArcGIS Feature/MapServer with `resultOffset`, always set `orderByFields` to a unique/stable field. Sanity-check `count(*) == count(DISTINCT geom)` after load.
+
 ## Common Issues to Watch For
 
 ### LangGraph

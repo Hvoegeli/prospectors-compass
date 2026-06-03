@@ -17,6 +17,10 @@ All geometries are stored in **SRID 4326 (WGS84)** and clipped to the active
 | Land manager / ownership | USGS PAD-US 4.1 Fee layer (per-state) — **substitutes BLM** (see note) | Public domain (US Gov work, 17 U.S.C. §105) | `ingest/padus.py` → `land_ownership` |
 | Roads + 4WD trails (public) | US Census TIGER/Line Roads (per-county) | Public domain (US Gov work, 17 U.S.C. §105) | `ingest/roads.py` → `roads` |
 | Forest roads + trails (USFS) | USFS EDW RoadCore_FS + TrailNFS_Publish (national) | Public domain (US Gov work, 17 U.S.C. §105) | `ingest/roads.py` (forest) → `roads` |
+| National forest boundaries | USFS EDW Administrative Forest Boundaries (national) | Public domain (US Gov work, 17 U.S.C. §105) | `ingest/usfs_forest.py` → `admin_forests` |
+| Historic metal-mining districts | Colorado Geological Survey ON-007-08D (per-state) | Public-use state-gov data (see note) | `ingest/cgs.py` → `mining_districts` |
+| Mineral resource potential | Colorado Geological Survey ON-007-03 (ArcGIS MapServer) | Public-use state-gov data (see note) | `ingest/cgs.py` → `mineral_potential` |
+| Abandoned mine-land hazards | Colorado Geological Survey ON-008-04 (per-state) | Public-use state-gov data (see note) | `ingest/cgs.py` → `aml_hazards` |
 
 ---
 
@@ -118,10 +122,91 @@ ingestion proves worth the effort later.
 - **Note:** per-state download honors "localized downloads" — only the chosen
   state is fetched, not the ~1 GB national SGMC geodatabase.
 
+## USFS Administrative Forest boundaries
+
+- **URL:** https://data.fs.usda.gov/geodata/edw/edw_resources/shp/S_USA.AdministrativeForest.zip
+- **Download size:** ~43 MB (national shapefile).
+- **What it is:** the *proclaimed* national-forest envelopes (e.g. "White River
+  National Forest") — broader than the FS-managed parcels in `land_ownership`
+  (PAD-US), because the envelope includes private inholdings. Kept because
+  prospecting / recreational-mining rules differ **per forest**, so the Land
+  Status agent needs the named forest to cite the right rules.
+- **Read strategy:** national file read with a focus-area **bbox filter**
+  (pyogrio), then clipped to the county union.
+- **Coverage in focus area:** 6 forests (White River, Arapaho & Roosevelt, Pike
+  & San Isabel, Grand Mesa-Uncompahgre-Gunnison, Medicine Bow-Routt, plus
+  Manti-La Sal clipping into far-western Mesa County).
+- **CRS:** USFS NAD83 (4269) → reprojected to 4326.
+
+## CGS Historic Metal Mining Districts (ON-007-08D)
+
+- **URL:** https://coloradogeologicalsurvey.org/Docs/Pubs/ON-007-08D-v20201112.zip
+- **Download size:** ~193 MB zip (mostly bundled county-report PDFs; the
+  shapefile itself is ~2.4 MB).
+- **Shapefile:** `Colorado_Historic_Metal_Mining_Districts.shp` (383 statewide
+  polygons; ~157 clipped to the focus area).
+- **What it is:** named historic metal-mining districts — proven-productive
+  ground for gold/silver. The single highest-signal prospecting layer.
+- **Fields kept:** `District` (name), `County_1/2`, `WebPage` (link to the CGS
+  county review PDF — surfaced for provenance), `Source`, `Note`.
+- **Source vintage:** v20201112 (Burnell, J.R., 2015, ON-007-08).
+- **CRS:** NAD83 UTM 13N (26913) → reprojected to 4326.
+
+## CGS Mineral Resource Potential Derivative Map (ON-007-03)
+
+- **Service:** `https://cgsarcimage.mines.edu/arcgis/rest/services/cgs_services/Mineral_Resource_Potential_Derivative_Map/MapServer/10`
+- **Access:** CGS offers no static download for this product — only an ArcGIS
+  web viewer. We query the backing **ArcGIS MapServer** (it has Query + geoJSON
+  enabled), bbox-filtered to the focus area and **paginated** (1000/page).
+- **⚠️ Pagination gotcha:** `resultOffset` paging is only stable with an explicit
+  `orderByFields` — without it the server reorders rows between pages, producing
+  duplicates and omissions. We pin `orderByFields=OBJECTID` (see ERROR_FIX_LOG).
+- **Model:** one polygon coverage (geologic units), each rating commodities 1
+  (low) / 2 (moderate) / 3 (high). The 22 web-map "sublayers" are just the same
+  polygons symbolized by different columns — so we pull once.
+- **Columns kept:** only prospecting-relevant targets — `MET_Au_P` (placer gold),
+  `IM_PEGM` (pegmatite → beryl/aquamarine/topaz), `IM_CRDM` (corundum →
+  ruby/sapphire), `MET_REE` (rare earth), `IM_FLUO` (fluorite). We keep only
+  polygons where one of these rates > 0 (the industrial/aggregate/coal commodities
+  are not prospecting targets).
+- **Coverage in focus area:** ~7,378 polygons (clipped from ~22,700 in-bbox).
+- **CRS:** requested back as 4326 via `outSR` (source is NAD27 UTM 13N, 26713).
+
+## CGS Abandoned Mine Land Inventory (ON-008-04)
+
+- **URL:** https://coloradogeologicalsurvey.org/wp-content/uploads/2025/07/ON-008-04.zip
+- **Download size:** ~11.5 MB (FileGDB, `USFS AMLI.gdb`, read in-place via /vsizip).
+- **Layers ingested (physical hazards only):** `Hole_Mine_Openings_Final`
+  (`hazard_kind='opening'` — adits/shafts you can fall into) and
+  `PILE_Mine_Tailings_Final` (`hazard_kind='tailings'` — waste/dump piles). The
+  water-sample/test and inventory-area-summary layers are **not** ingested
+  (environmental-monitoring points, not actionable physical hazards).
+- **Fields kept:** `feature_type` (HTYPE/PTYPE), `haz_rating` (e.g. "extreme
+  danger", "potential danger", "no significant hazard"), `env_rating`, `comments`.
+- **Coverage in focus area:** ~4,852 hazard points (3,034 openings + 1,818 tailings).
+- **Why it matters:** directly serves the PRD requirement to surface hazards when
+  abandoned mines are near a recommendation.
+- **Source vintage:** collected 1990s, finalized 2011, clerical updates 2020.
+- **CRS:** NAD83 UTM 13N (26913) → reprojected to 4326.
+
+> **CGS licensing note:** Colorado Geological Survey publishes these datasets for
+> public use via its GIS Data & Web Map Portal. They are state-government works
+> (not federal public-domain), distributed for public reuse with source
+> attribution; we cite ON-007-08, ON-007-03, and ON-008-04 respectively. If any
+> redistribution restriction surfaces, revisit before bundling data (we never
+> commit the data itself — only the code that downloads it locally).
+
 ---
 
 ## Refresh cadence (Group 2 subtask 7)
 
-- **MRDS / county boundaries:** change slowly (years); re-run on demand.
-- **Land status (BLM/USFS — pending):** target monthly refresh per PRD §9.4.
-  Each land-status record must carry an "as-of" date stamp.
+Run `uv run python -m prospector.ingest refresh` for a full, forced re-download +
+re-ingest of every source (sets `PROSPECTOR_FORCE_DOWNLOAD=1`, then runs `all`,
+then stamps `data/processed/last_refresh.txt`). Manual cadence:
+
+- **MRDS / county boundaries / geology:** change slowly (years); re-run on demand.
+- **Land status (PAD-US ownership):** target monthly refresh per PRD §9.4.
+  Each land-status record carries an "as-of" date stamp (`as_of_date`).
+- **CGS layers:** updated rarely (per-publication version); re-run on demand.
+- **USFS roads/forests:** large national files (~700 MB total) — a full `refresh`
+  re-pulls them, so run it when you actually want fresh upstream data.

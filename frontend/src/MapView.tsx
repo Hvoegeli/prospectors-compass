@@ -22,16 +22,39 @@ const BASE_STYLE: StyleSpecification = {
 
 type LayerInfo = { id: string; label: string; group: 'overlay' | 'finds' }
 
-// Draw order: fills, then lines (counties/roads/trails), then points on top.
+// Draw order: fills (geology→context→targets), then lines, then points on top.
 const LAYERS: LayerInfo[] = [
   { id: 'geology', label: 'Geologic map', group: 'overlay' },
   { id: 'ownership', label: 'Land ownership', group: 'overlay' },
+  { id: 'potential', label: 'Mineral potential (CGS)', group: 'finds' },
+  { id: 'districts', label: 'Historic mining districts', group: 'finds' },
+  { id: 'forests', label: 'National forest boundaries', group: 'overlay' },
   { id: 'counties', label: 'County boundaries', group: 'overlay' },
   { id: 'roads', label: 'Roads (public + USFS)', group: 'overlay' },
   { id: 'trails', label: 'Trails (4WD + USFS)', group: 'overlay' },
+  { id: 'aml', label: 'Mine hazards (AML)', group: 'overlay' },
   { id: 'usmin', label: 'USMIN features', group: 'finds' },
   { id: 'mrds', label: 'MRDS mines', group: 'finds' },
 ]
+
+// Mineral-potential targets — the rating column each one colors the map by.
+const POTENTIAL_TARGETS: { id: string; label: string }[] = [
+  { id: 'au_placer', label: 'Placer gold' },
+  { id: 'pegmatite', label: 'Pegmatite (beryl / aquamarine / topaz)' },
+  { id: 'corundum', label: 'Corundum (ruby / sapphire)' },
+  { id: 'rare_earth', label: 'Rare earth elements' },
+  { id: 'fluorite', label: 'Fluorite' },
+]
+
+// Favorability rating (1=low, 2=moderate, 3=high) → graduated amber.
+function potentialColor(target: string): maplibregl.ExpressionSpecification {
+  return ['match', ['get', target], 1, '#fde68a', 2, '#f59e0b', 3, '#b45309', 'rgba(0,0,0,0)']
+}
+
+// Show only polygons that actually rate for the chosen target.
+function potentialFilter(target: string): maplibregl.FilterSpecification {
+  return ['>', ['coalesce', ['get', target], 0], 0]
+}
 
 function layerSpec(id: string): LayerSpecification {
   const source = `${id}-src`
@@ -74,6 +97,59 @@ function layerSpec(id: string): LayerSpecification {
             '#94a3b8',
           ],
           'fill-opacity': 0.4,
+        },
+      }
+    case 'potential':
+      // Colored by the selected target's favorability; target switched client-side.
+      return {
+        id,
+        source,
+        type: 'fill',
+        filter: potentialFilter('au_placer'),
+        paint: {
+          'fill-color': potentialColor('au_placer'),
+          'fill-opacity': 0.55,
+          'fill-outline-color': '#92400e',
+        },
+      }
+    case 'districts':
+      return {
+        id,
+        source,
+        type: 'fill',
+        paint: {
+          // Historic metal-mining districts — proven-productive ground.
+          'fill-color': '#fcd34d',
+          'fill-opacity': 0.28,
+          'fill-outline-color': '#b45309',
+        },
+      }
+    case 'forests':
+      return {
+        id,
+        source,
+        type: 'line',
+        // Named national-forest envelope (dashed dark green).
+        paint: { 'line-color': '#166534', 'line-width': 2, 'line-dasharray': [3, 2] },
+      }
+    case 'aml':
+      return {
+        id,
+        source,
+        type: 'circle',
+        paint: {
+          'circle-radius': 3,
+          // Abandoned-mine hazards by severity (reds) — fall-in / contamination risk.
+          'circle-color': [
+            'match',
+            ['get', 'haz_rating'],
+            'extreme danger', '#b91c1c',
+            'dangerous', '#ef4444',
+            'potential danger', '#f97316',
+            '#9ca3af',
+          ],
+          'circle-stroke-color': '#1f2937',
+          'circle-stroke-width': 0.5,
         },
       }
     case 'counties':
@@ -182,6 +258,7 @@ export default function MapView() {
   const [facets, setFacets] = useState<Facets>({ commodities: [], deposit_types: [] })
   const [commodity, setCommodity] = useState('')
   const [depType, setDepType] = useState('')
+  const [potentialTarget, setPotentialTarget] = useState('au_placer')
   const [ready, setReady] = useState(false)
 
   // Populate the target dropdowns from the real data.
@@ -207,6 +284,15 @@ export default function MapView() {
       })
       .catch(() => {})
   }, [commodity, depType, ready])
+
+  // Recolor the mineral-potential layer by the chosen target — no re-query needed,
+  // since every polygon already carries all the rating columns.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !ready || !map.getLayer('potential')) return
+    map.setPaintProperty('potential', 'fill-color', potentialColor(potentialTarget))
+    map.setFilter('potential', potentialFilter(potentialTarget))
+  }, [potentialTarget, ready])
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return
@@ -308,6 +394,26 @@ export default function MapView() {
               {l.label}
             </label>
           ))}
+          {visible.potential && (
+            <>
+              <label className="field">
+                Potential target
+                <select
+                  value={potentialTarget}
+                  onChange={(e) => setPotentialTarget(e.target.value)}
+                >
+                  {POTENTIAL_TARGETS.map((t) => (
+                    <option key={t.id} value={t.id}>{t.label}</option>
+                  ))}
+                </select>
+              </label>
+              <div className="legend">
+                <span><i className="dot" style={{ background: '#fde68a' }} /> Low</span>
+                <span><i className="dot" style={{ background: '#f59e0b' }} /> Moderate</span>
+                <span><i className="dot" style={{ background: '#b45309' }} /> High</span>
+              </div>
+            </>
+          )}
           {visible.mrds && (
             <div className="legend">
               <span><i className="dot" style={{ background: '#fbbf24' }} /> Lode / hard-rock</span>

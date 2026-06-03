@@ -178,3 +178,126 @@ class GeologicUnit(Base):
     geom: Mapped[object] = mapped_column(
         Geometry(geometry_type="MULTIPOLYGON", srid=WGS84, spatial_index=True)
     )
+
+
+class AdminForest(Base):
+    """A named National Forest administrative boundary, clipped to the focus area.
+
+    Source: USFS EDW Administrative Forest Boundaries (national shapefile,
+    https://data.fs.usda.gov/geodata/edw/). This is the *proclaimed* forest
+    envelope (e.g. "White River National Forest") — broader than the actual
+    FS-managed parcels in `land_ownership`. We keep it because prospecting and
+    recreational-mining rules differ per forest, so the Land Status agent needs
+    to know which named forest a site sits in to cite the right rules.
+
+    Coverage layer; re-ingest scoped by `state_fips`.
+    """
+
+    __tablename__ = "admin_forests"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    state_fips: Mapped[str] = mapped_column(String(2), nullable=False, index=True)
+    #: Proclaimed forest name, e.g. "White River National Forest".
+    forest_name: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    #: USFS region number (Colorado forests are Region 02).
+    region: Mapped[str | None] = mapped_column(String, nullable=True)
+    #: USFS forest organizational code (FORESTORGC).
+    forest_code: Mapped[str | None] = mapped_column(String, nullable=True)
+    geom: Mapped[object] = mapped_column(
+        Geometry(geometry_type="MULTIPOLYGON", srid=WGS84, spatial_index=True)
+    )
+
+
+class MiningDistrict(Base):
+    """A historic metal-mining district polygon, clipped to the focus area.
+
+    Source: Colorado Geological Survey ON-007-08D, "Historic Metal Mining
+    Districts of Colorado" (per-state shapefile). Each polygon names a district
+    where metals (gold, silver, …) were historically mined and links to the
+    CGS county report PDF (`web_page`). The single highest-signal prospecting
+    layer — these are proven-productive ground.
+
+    Coverage layer; re-ingest scoped by `state_fips`.
+    """
+
+    __tablename__ = "mining_districts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    state_fips: Mapped[str] = mapped_column(String(2), nullable=False, index=True)
+    #: District name, e.g. "Central City", "Leadville".
+    district: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    #: Primary / secondary county the district falls in (CGS text fields).
+    county_1: Mapped[str | None] = mapped_column(String, nullable=True)
+    county_2: Mapped[str | None] = mapped_column(String, nullable=True)
+    #: Link to the CGS county review PDF for this district (provenance).
+    web_page: Mapped[str | None] = mapped_column(String, nullable=True)
+    #: CGS source citation.
+    source: Mapped[str | None] = mapped_column(String, nullable=True)
+    #: Boundary caveat, e.g. "Estimated boundary and location."
+    note: Mapped[str | None] = mapped_column(String, nullable=True)
+    geom: Mapped[object] = mapped_column(
+        Geometry(geometry_type="MULTIPOLYGON", srid=WGS84, spatial_index=True)
+    )
+
+
+class MineralPotential(Base):
+    """A geologic-unit polygon rated for mineral-resource potential (CGS).
+
+    Source: Colorado Geological Survey "Mineral Resource Potential Derivative
+    Map" (ON-007-03), pulled from the CGS ArcGIS MapServer. Each polygon (a
+    geologic unit) carries an integer favorability rating (1=low, 2=moderate,
+    3=high) per commodity. We keep only polygons where a *prospecting-relevant*
+    target rates > 0, and only those target columns — the industrial/aggregate
+    commodities (sand, gravel, gypsum, coal) aren't prospecting targets.
+
+    Coverage layer; re-ingest scoped by `state_fips`.
+    """
+
+    __tablename__ = "mineral_potential"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    state_fips: Mapped[str] = mapped_column(String(2), nullable=False, index=True)
+    #: Source map-unit/formation code (FMT) for context.
+    formation: Mapped[str | None] = mapped_column(String, nullable=True)
+    #: 7.5' quadrangle name (QUAD).
+    quad: Mapped[str | None] = mapped_column(String, nullable=True)
+    #: Favorability ratings (1=low, 2=moderate, 3=high; NULL/0 = not rated).
+    au_placer: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    pegmatite: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    corundum: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    rare_earth: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    fluorite: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    geom: Mapped[object] = mapped_column(
+        Geometry(geometry_type="MULTIPOLYGON", srid=WGS84, spatial_index=True)
+    )
+
+
+class AmlHazard(Base):
+    """An abandoned-mine-land hazard point, clipped to the focus area.
+
+    Source: Colorado Geological Survey ON-008-04, the USFS Abandoned Mine Land
+    Inventory geodatabase. We ingest the two physical-hazard layers — mine
+    openings (`hazard_kind='opening'`: adits/shafts you could fall into) and
+    tailings/waste piles (`hazard_kind='tailings'`). Directly supports the PRD
+    requirement to surface hazards when abandoned mines are near a recommendation.
+
+    Coverage layer; re-ingest scoped by `state_fips`.
+    """
+
+    __tablename__ = "aml_hazards"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    state_fips: Mapped[str] = mapped_column(String(2), nullable=False, index=True)
+    #: 'opening' (adit/shaft) or 'tailings' (waste/dump pile).
+    hazard_kind: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    #: Specific feature type, e.g. "adit", "shaft", "mine dump".
+    feature_type: Mapped[str | None] = mapped_column(String, nullable=True)
+    #: CGS hazard rating, e.g. "potential danger", "no significant hazard".
+    haz_rating: Mapped[str | None] = mapped_column(String, nullable=True)
+    #: CGS environmental rating where present.
+    env_rating: Mapped[str | None] = mapped_column(String, nullable=True)
+    #: Field notes / comments.
+    comments: Mapped[str | None] = mapped_column(String, nullable=True)
+    geom: Mapped[object] = mapped_column(
+        Geometry(geometry_type="POINT", srid=WGS84, spatial_index=True)
+    )

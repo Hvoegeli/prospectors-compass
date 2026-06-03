@@ -15,13 +15,18 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
+from datetime import datetime, timezone
 
 from prospector.ingest.census import ingest_counties
+from prospector.ingest.cgs import ingest_aml, ingest_districts, ingest_potential
 from prospector.ingest.focus_area import DEFAULT_REGION
 from prospector.ingest.geology import ingest_geology
 from prospector.ingest.mrds import ingest_mrds
 from prospector.ingest.padus import ingest_ownership
 from prospector.ingest.roads import ingest_forest, ingest_roads
+from prospector.ingest.storage import PROCESSED_DIR, ensure_dir
+from prospector.ingest.usfs_forest import ingest_forests
 from prospector.ingest.usmin import ingest_usmin
 
 
@@ -75,6 +80,70 @@ def _run_forest() -> None:
     print(f"✓ Loaded {count} forest road/trail segments into PostGIS table 'roads'.")
 
 
+def _run_forests() -> None:
+    region = DEFAULT_REGION
+    print(f"Ingesting USFS Administrative Forest boundaries for: {region.name}")
+    count = ingest_forests(region)
+    print(f"✓ Loaded {count} forest boundaries into PostGIS table 'admin_forests'.")
+
+
+def _run_districts() -> None:
+    region = DEFAULT_REGION
+    print(f"Ingesting CGS historic metal-mining districts for: {region.name}")
+    count = ingest_districts(region)
+    print(f"✓ Loaded {count} mining districts into PostGIS table 'mining_districts'.")
+
+
+def _run_potential() -> None:
+    region = DEFAULT_REGION
+    print(f"Ingesting CGS mineral-resource potential for: {region.name}")
+    count = ingest_potential(region)
+    print(f"✓ Loaded {count} mineral-potential polygons into PostGIS table 'mineral_potential'.")
+
+
+def _run_aml() -> None:
+    region = DEFAULT_REGION
+    print(f"Ingesting CGS abandoned-mine-land hazards for: {region.name}")
+    count = ingest_aml(region)
+    print(f"✓ Loaded {count} AML hazard points into PostGIS table 'aml_hazards'.")
+
+
+def _run_all() -> None:
+    """Run every ingestion step in dependency order (counties first — it's the clip mask)."""
+    _run_counties()
+    _run_mrds()
+    _run_usmin()
+    _run_geology()
+    _run_ownership()
+    _run_roads()
+    _run_forest()
+    _run_forests()
+    _run_districts()
+    _run_potential()
+    _run_aml()
+
+
+def _run_refresh() -> None:
+    """Re-pull every source fresh and re-ingest, then stamp the refresh date.
+
+    Manual cadence (PRD §9.4 targets monthly for land status). Forces a fresh
+    download of every source — including the large USFS national files — so the
+    local data reflects the latest upstream. Writes data/processed/last_refresh.txt.
+    """
+    region = DEFAULT_REGION
+    print(f"Refreshing ALL data (forcing fresh downloads) for: {region.name}")
+    os.environ["PROSPECTOR_FORCE_DOWNLOAD"] = "1"
+    try:
+        _run_all()
+    finally:
+        os.environ.pop("PROSPECTOR_FORCE_DOWNLOAD", None)
+
+    stamp = ensure_dir(PROCESSED_DIR) / "last_refresh.txt"
+    when = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    stamp.write_text(f"{when}  {region.name}\n")
+    print(f"✓ Refresh complete. Stamped {stamp} ({when}).")
+
+
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     parser = argparse.ArgumentParser(prog="prospector.ingest")
@@ -86,7 +155,12 @@ def main() -> None:
     sub.add_parser("ownership", help="Download + clip + load PAD-US land manager/owner polygons")
     sub.add_parser("roads", help="Download + load public roads + 4WD trails (TIGER)")
     sub.add_parser("forest", help="Download + load USFS forest roads + trails")
+    sub.add_parser("forests", help="Download + load USFS Administrative Forest boundaries")
+    sub.add_parser("districts", help="Download + load CGS historic metal-mining districts")
+    sub.add_parser("potential", help="Download + load CGS mineral-resource potential")
+    sub.add_parser("aml", help="Download + load CGS abandoned-mine-land hazards")
     sub.add_parser("all", help="Run every ingestion step in order")
+    sub.add_parser("refresh", help="Force fresh re-download + re-ingest of every source")
     args = parser.parse_args()
 
     # Clipping needs the county mask, so counties must come first.
@@ -104,14 +178,18 @@ def main() -> None:
         _run_roads()
     elif args.command == "forest":
         _run_forest()
+    elif args.command == "forests":
+        _run_forests()
+    elif args.command == "districts":
+        _run_districts()
+    elif args.command == "potential":
+        _run_potential()
+    elif args.command == "aml":
+        _run_aml()
     elif args.command == "all":
-        _run_counties()
-        _run_mrds()
-        _run_usmin()
-        _run_geology()
-        _run_ownership()
-        _run_roads()
-        _run_forest()
+        _run_all()
+    elif args.command == "refresh":
+        _run_refresh()
 
 
 if __name__ == "__main__":

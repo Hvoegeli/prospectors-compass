@@ -28,6 +28,10 @@ LAYERS: dict[str, str] = {
     "ownership": "land_ownership",
     "roads": "roads",
     "trails": "roads",
+    "forests": "admin_forests",
+    "districts": "mining_districts",
+    "potential": "mineral_potential",
+    "aml": "aml_hazards",
 }
 
 #: Layers backed by a shared table, distinguished by a fixed category filter.
