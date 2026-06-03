@@ -25,6 +25,7 @@ from sqlalchemy import and_, delete
 
 from prospector.db.base import Base, SessionLocal, engine
 from prospector.db.models import RoadSegment
+from prospector.ingest.census import load_region_counties
 from prospector.ingest.focus_area import DEFAULT_REGION, DownloadRegion
 from prospector.ingest.storage import RAW_DIR, download_file
 from prospector.ingest.util import na_to_none
@@ -34,6 +35,11 @@ log = logging.getLogger(__name__)
 TIGER_ROADS_URL = "https://www2.census.gov/geo/tiger/TIGER2023/ROADS/tl_2023_{geoid}_roads.zip"
 WGS84 = 4326
 PUBLIC = "public"
+FOREST = "forest"
+
+# USFS national files (already downloaded to the local cache; see DATA_SOURCES).
+_USFS_ROADS = RAW_DIR / "usfs" / "RoadCore_FS.zip"
+_USFS_TRAILS = RAW_DIR / "usfs" / "TrailNFS_Publish.zip"
 
 # MTFCC road class -> (category, human label). Anything not here is dropped.
 _MTFCC: dict[str, tuple[str, str]] = {
@@ -101,4 +107,65 @@ def ingest_roads(region: DownloadRegion = DEFAULT_REGION) -> int:
         count = len(gdf)
 
     log.info("Ingested %d public road/trail segments for region '%s'", count, region.name)
+    return count
+
+
+def _read_usfs_clipped(zip_path, layer: str, bbox, mask) -> gpd.GeoDataFrame:
+    """Read a USFS national line layer within ``bbox``, reproject, clip to ``mask``."""
+    gdf = gpd.read_file(f"zip://{zip_path}!{layer}.shp", bbox=tuple(bbox))
+    gdf = gdf.to_crs(epsg=WGS84)
+    clipped = gpd.clip(gdf, mask, keep_geom_type=True)
+    clipped["geometry"] = clipped.geometry.apply(_to_multilinestring)
+    return clipped[clipped.geometry.notna()].copy()
+
+
+def ingest_forest(region: DownloadRegion = DEFAULT_REGION) -> int:
+    """Download (cached) + clip + store USFS forest roads & trails. Idempotent.
+
+    Reads the national USFS files with a focus-area bbox filter (so the whole
+    nation never loads), then clips to the county union. Forest roads carry
+    their operational maintenance level (drivability) as `road_class`. Trails
+    are limited to TERRA (land) routes. Re-ingest scoped by (state_fips, 'forest').
+    """
+    Base.metadata.create_all(engine)
+    counties = load_region_counties(region)
+    bbox = counties.total_bounds
+    mask = counties.geometry.union_all()
+
+    roads = _read_usfs_clipped(_USFS_ROADS, "S_USA.RoadCore_FS", bbox, mask)
+    trails = _read_usfs_clipped(_USFS_TRAILS, "S_USA.TrailNFS_Publish", bbox, mask)
+    trails = trails[trails["TRAIL_TYPE"] == "TERRA"]  # land trails only
+
+    with SessionLocal() as session:
+        session.execute(
+            delete(RoadSegment).where(
+                and_(RoadSegment.state_fips == region.state_fips, RoadSegment.kind == FOREST)
+            )
+        )
+        for row in roads.itertuples(index=False):
+            session.add(
+                RoadSegment(
+                    state_fips=region.state_fips,
+                    category="road",
+                    kind=FOREST,
+                    name=na_to_none(row.NAME),
+                    road_class=na_to_none(row.OPER_MAINT),
+                    geom=from_shape(row.geometry, srid=WGS84),
+                )
+            )
+        for row in trails.itertuples(index=False):
+            session.add(
+                RoadSegment(
+                    state_fips=region.state_fips,
+                    category="trail",
+                    kind=FOREST,
+                    name=na_to_none(row.TRAIL_NAME),
+                    road_class="Forest trail",
+                    geom=from_shape(row.geometry, srid=WGS84),
+                )
+            )
+        session.commit()
+        count = len(roads) + len(trails)
+
+    log.info("Ingested %d forest road/trail segments for region '%s'", count, region.name)
     return count

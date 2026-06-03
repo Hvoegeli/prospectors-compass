@@ -16,6 +16,7 @@ All geometries are stored in **SRID 4326 (WGS84)** and clipped to the active
 | Geologic unit polygons | USGS State Geologic Map Compilation (per-state) | Public domain (US Gov work, 17 U.S.C. §105) | `ingest/geology.py` → `geologic_units` |
 | Land manager / ownership | USGS PAD-US 4.1 Fee layer (per-state) — **substitutes BLM** (see note) | Public domain (US Gov work, 17 U.S.C. §105) | `ingest/padus.py` → `land_ownership` |
 | Roads + 4WD trails (public) | US Census TIGER/Line Roads (per-county) | Public domain (US Gov work, 17 U.S.C. §105) | `ingest/roads.py` → `roads` |
+| Forest roads + trails (USFS) | USFS EDW RoadCore_FS + TrailNFS_Publish (national) | Public domain (US Gov work, 17 U.S.C. §105) | `ingest/roads.py` (forest) → `roads` |
 
 ---
 
@@ -77,8 +78,18 @@ ingestion proves worth the effort later.
   `S1500` Vehicular Trail (4WD) → `category='trail'`. City streets (`S1400`) dropped.
 - **Coverage in focus area:** ~727 road + ~896 trail segments across the 10 counties.
 - **CRS:** TIGER NAD83 (4269) → reprojected to 4326.
-- **Forest Service roads/trails (USFS):** not yet ingested — a later enrichment
-  (the USFS RoadCore/TrailNFS national files are large downloads).
+## USFS forest roads + trails
+
+- **URLs:** `https://data.fs.usda.gov/geodata/edw/edw_resources/shp/S_USA.RoadCore_FS.zip`
+  (~432 MB national) and `…/S_USA.TrailNFS_Publish.zip` (~230 MB national).
+- **Read strategy:** national files read with a focus-area **bbox filter** (pyogrio),
+  so the whole nation never loads into memory; then clipped to the county union.
+- **Coverage in focus area:** ~2,530 forest roads + ~1,945 forest trails (TERRA only).
+- **Forest roads** carry `OPER_MAINT` (operational maintenance level) as `road_class`
+  — drivability: 5 paved → 3 passenger car → 2 high-clearance/4×4 → 1 closed.
+- **Trails** limited to `TRAIL_TYPE = 'TERRA'` (land); snow/water routes excluded.
+- **CRS:** USFS NAD83 (4269) → reprojected to 4326. Stored with `kind='forest'`
+  in the shared `roads` table alongside the public (TIGER) `kind='public'` rows.
 
 ## USGS USMIN (topo mine features)
 

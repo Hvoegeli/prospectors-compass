@@ -27,8 +27,8 @@ const LAYERS: LayerInfo[] = [
   { id: 'geology', label: 'Geologic map', group: 'overlay' },
   { id: 'ownership', label: 'Land ownership', group: 'overlay' },
   { id: 'counties', label: 'County boundaries', group: 'overlay' },
-  { id: 'roads', label: 'Roads (hwy/secondary)', group: 'overlay' },
-  { id: 'trails', label: 'Trails (4WD)', group: 'overlay' },
+  { id: 'roads', label: 'Roads (public + USFS)', group: 'overlay' },
+  { id: 'trails', label: 'Trails (4WD + USFS)', group: 'overlay' },
   { id: 'usmin', label: 'USMIN features', group: 'finds' },
   { id: 'mrds', label: 'MRDS mines', group: 'finds' },
 ]
@@ -84,8 +84,14 @@ function layerSpec(id: string): LayerSpecification {
         source,
         type: 'line',
         paint: {
-          'line-color': ['match', ['get', 'road_class'], 'Primary', '#f87171', '#fb923c'],
-          'line-width': ['match', ['get', 'road_class'], 'Primary', 2.4, 1.4],
+          // Forest roads brown; public by class (primary red, secondary orange).
+          'line-color': [
+            'case',
+            ['==', ['get', 'kind'], 'forest'],
+            '#b45309',
+            ['match', ['get', 'road_class'], 'Primary', '#f87171', '#fb923c'],
+          ],
+          'line-width': ['match', ['get', 'road_class'], 'Primary', 2.4, 1.3],
         },
       }
     case 'trails':
@@ -93,7 +99,12 @@ function layerSpec(id: string): LayerSpecification {
         id,
         source,
         type: 'line',
-        paint: { 'line-color': '#c4b5fd', 'line-width': 1, 'line-dasharray': [2, 2] },
+        paint: {
+          // Forest trails green; public 4WD purple.
+          'line-color': ['case', ['==', ['get', 'kind'], 'forest'], '#34d399', '#c4b5fd'],
+          'line-width': 1,
+          'line-dasharray': [2, 2],
+        },
       }
     case 'usmin':
       return {
