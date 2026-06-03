@@ -34,11 +34,23 @@ cd frontend && npm run dev          # http://localhost:5173
 ```
 If layers don't load: confirm the API at http://localhost:8000/layers and that the DB has data (`uv run python -m prospector.ingest all`).
 
+## Map now has (all toggleable)
+
+Overlays: **geology** (colored by rock type), **land ownership** (BLM/USFS/…),
+**county boundaries**, **roads** (TIGER public + USFS forest, colored by kind),
+**trails** (TIGER 4WD + USFS forest). Mining **claims = BLM MLRS portal link**
+(not ingested — decision). Finds: **MRDS** (commodity + deposit-type dropdowns,
+placer cyan / lode amber) and **USMIN**. Click = multi-layer popup. Layer data via
+`GET /layers/{name}` (mrds also `?commodity=&dep_type=`; `/layers/mrds/facets`).
+
+`roads` table holds public + forest (kind). Ingest everything: `uv run python -m
+prospector.ingest all` (note: `forest` needs the cached 432MB+230MB USFS files).
+
 ## Next up — options
 
-1. **Thicken the map:** self-hosted basemap (TileServer GL + MBTiles — stack-locked, Group 8 subtask 2); currently the map uses a neutral background only. Color/legend polish; bbox-driven loading for USMIN.
-2. **Finish Group 2 data:** USFS boundaries (subtask 5), CGS (subtask 6), refresh script (7) — all deferred during the map slice.
-3. **Move to agents (Group 3/4):** spatial query tools + the LangGraph supervisor/subagents.
+1. **Thicken the map:** self-hosted basemap (TileServer GL + MBTiles — stack-locked, Group 8 subtask 2); currently neutral background only. bbox-driven loading for the big point layers.
+2. **Finish Group 2 data:** CGS (subtask 6), refresh script (7). _(USFS boundaries were effectively covered via PAD-US manager + USFS roads/trails; revisit if a forest-boundary polygon is still wanted.)_
+3. **Move to agents (Group 3/4):** spatial query tools (distance-from-road is now possible — roads are in PostGIS) + the LangGraph supervisor/subagents.
 
 **BLM claims: deferred to a portal link** (PRD Open-Q #2 — messy PLSS data). Land Status agent/UI links to BLM MLRS rather than ingesting. See `docs/DATA_SOURCES.md`.
 
