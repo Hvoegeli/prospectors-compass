@@ -126,6 +126,26 @@
   color: #fbbf24;
 }
 
+/* Make the popup close (X) button obvious and easy to hit. */
+.maplibregl-popup-close-button {
+  width: 24px;
+  height: 24px;
+  font-size: 20px;
+  line-height: 20px;
+  color: #334155;
+  border-radius: 4px;
+}
+
+.maplibregl-popup-close-button:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
+/* Room so the X never overlaps the content. */
+.maplibregl-popup-content {
+  padding-right: 24px;
+}
+
 .popup table {
   border-collapse: collapse;
   font: 12px/1.3 system-ui, sans-serif;

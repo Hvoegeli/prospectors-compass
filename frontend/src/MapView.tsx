@@ -254,7 +254,7 @@ export default function MapView() {
         .map((id) => feats.find((f) => f.layer.id === id))
         .filter((f): f is maplibregl.MapGeoJSONFeature => f !== undefined)
       if (!picked.length) return
-      new maplibregl.Popup({ maxWidth: '340px' })
+      new maplibregl.Popup({ maxWidth: '340px', closeButton: true, closeOnClick: true })
         .setLngLat(e.lngLat)
         .setHTML(popupHtml(picked))
         .addTo(map)
