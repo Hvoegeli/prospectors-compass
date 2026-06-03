@@ -15,6 +15,7 @@ All geometries are stored in **SRID 4326 (WGS84)** and clipped to the active
 | Topo mine features | USGS USMIN — Prospect/Mine-Related Features (per-state) | Public domain (US Gov work, 17 U.S.C. §105) | `ingest/usmin.py` → `usmin_features` |
 | Geologic unit polygons | USGS State Geologic Map Compilation (per-state) | Public domain (US Gov work, 17 U.S.C. §105) | `ingest/geology.py` → `geologic_units` |
 | Land manager / ownership | USGS PAD-US 4.1 Fee layer (per-state) — **substitutes BLM** (see note) | Public domain (US Gov work, 17 U.S.C. §105) | `ingest/padus.py` → `land_ownership` |
+| Roads + 4WD trails (public) | US Census TIGER/Line Roads (per-county) | Public domain (US Gov work, 17 U.S.C. §105) | `ingest/roads.py` → `roads` |
 
 ---
 
@@ -68,6 +69,16 @@ Per PRD Open Question #2, BLM mining-claim data is PLSS-based legal records
 ingest claims for v1.** Instead, the Land Status agent/UI surfaces a link to
 BLM's official **MLRS** portal for claim verification. Revisit if claim
 ingestion proves worth the effort later.
+
+## Census TIGER roads + trails (public)
+
+- **URL:** https://www2.census.gov/geo/tiger/TIGER2023/ROADS/tl_2023_{GEOID}_roads.zip (per county)
+- **Classes kept** (MTFCC): `S1100` Primary + `S1200` Secondary → `category='road'`;
+  `S1500` Vehicular Trail (4WD) → `category='trail'`. City streets (`S1400`) dropped.
+- **Coverage in focus area:** ~727 road + ~896 trail segments across the 10 counties.
+- **CRS:** TIGER NAD83 (4269) → reprojected to 4326.
+- **Forest Service roads/trails (USFS):** not yet ingested — a later enrichment
+  (the USFS RoadCore/TrailNFS national files are large downloads).
 
 ## USGS USMIN (topo mine features)
 

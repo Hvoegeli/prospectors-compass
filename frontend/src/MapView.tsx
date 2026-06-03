@@ -20,15 +20,17 @@ const BASE_STYLE: StyleSpecification = {
   layers: [{ id: 'bg', type: 'background', paint: { 'background-color': '#0e1726' } }],
 }
 
-type LayerInfo = { id: string; label: string }
+type LayerInfo = { id: string; label: string; group: 'overlay' | 'finds' }
 
-// Draw order: polygons first, then county outlines, then points on top.
+// Draw order: fills, then lines (counties/roads/trails), then points on top.
 const LAYERS: LayerInfo[] = [
-  { id: 'geology', label: 'Geology' },
-  { id: 'ownership', label: 'Land ownership' },
-  { id: 'counties', label: 'Counties' },
-  { id: 'usmin', label: 'USMIN features' },
-  { id: 'mrds', label: 'MRDS mines' },
+  { id: 'geology', label: 'Geologic map', group: 'overlay' },
+  { id: 'ownership', label: 'Land ownership', group: 'overlay' },
+  { id: 'counties', label: 'County boundaries', group: 'overlay' },
+  { id: 'roads', label: 'Roads (hwy/secondary)', group: 'overlay' },
+  { id: 'trails', label: 'Trails (4WD)', group: 'overlay' },
+  { id: 'usmin', label: 'USMIN features', group: 'finds' },
+  { id: 'mrds', label: 'MRDS mines', group: 'finds' },
 ]
 
 function layerSpec(id: string): LayerSpecification {
@@ -76,6 +78,23 @@ function layerSpec(id: string): LayerSpecification {
       }
     case 'counties':
       return { id, source, type: 'line', paint: { 'line-color': '#e2e8f0', 'line-width': 1.4 } }
+    case 'roads':
+      return {
+        id,
+        source,
+        type: 'line',
+        paint: {
+          'line-color': ['match', ['get', 'road_class'], 'Primary', '#f87171', '#fb923c'],
+          'line-width': ['match', ['get', 'road_class'], 'Primary', 2.4, 1.4],
+        },
+      }
+    case 'trails':
+      return {
+        id,
+        source,
+        type: 'line',
+        paint: { 'line-color': '#c4b5fd', 'line-width': 1, 'line-dasharray': [2, 2] },
+      }
     case 'usmin':
       return {
         id,
@@ -219,7 +238,7 @@ export default function MapView() {
       if (!feats.length) return
       // Show one section per layer present (rock, land manager, mine, road),
       // ordered most-specific first.
-      const order = ['mrds', 'usmin', 'roads', 'geology', 'ownership', 'counties']
+      const order = ['mrds', 'usmin', 'roads', 'trails', 'geology', 'ownership', 'counties']
       const picked = order
         .map((id) => feats.find((f) => f.layer.id === id))
         .filter((f): f is maplibregl.MapGeoJSONFeature => f !== undefined)
@@ -251,8 +270,39 @@ export default function MapView() {
         <h3>Prospector's Compass</h3>
         <p className="status">{status}</p>
 
-        <div className="target">
-          <span className="target-title">Target (filters MRDS mines)</span>
+        <div className="group">
+          <span className="group-title">Overlays</span>
+          {LAYERS.filter((l) => l.group === 'overlay').map((l) => (
+            <label key={l.id} className="layer-toggle">
+              <input type="checkbox" checked={visible[l.id]} onChange={() => toggle(l.id)} />
+              {l.label}
+            </label>
+          ))}
+          {visible.ownership && (
+            <p className="disclaimer">
+              Land status is informational only. Verify land status and prospecting rules with the
+              relevant agency before digging.
+            </p>
+          )}
+          <a className="claims-link" href="https://mlrs.blm.gov/" target="_blank" rel="noreferrer">
+            ⛏ Verify mining claims — BLM MLRS ↗
+          </a>
+        </div>
+
+        <div className="group">
+          <span className="group-title">Finds / targets</span>
+          {LAYERS.filter((l) => l.group === 'finds').map((l) => (
+            <label key={l.id} className="layer-toggle">
+              <input type="checkbox" checked={visible[l.id]} onChange={() => toggle(l.id)} />
+              {l.label}
+            </label>
+          ))}
+          {visible.mrds && (
+            <div className="legend">
+              <span><i className="dot" style={{ background: '#fbbf24' }} /> Lode / hard-rock</span>
+              <span><i className="dot" style={{ background: '#22d3ee' }} /> Placer</span>
+            </div>
+          )}
           <label className="field">
             Commodity
             <select value={commodity} onChange={(e) => setCommodity(e.target.value)}>
@@ -272,25 +322,6 @@ export default function MapView() {
             </select>
           </label>
         </div>
-
-        {LAYERS.map((l) => (
-          <label key={l.id} className="layer-toggle">
-            <input type="checkbox" checked={visible[l.id]} onChange={() => toggle(l.id)} />
-            {l.label}
-          </label>
-        ))}
-        {visible.mrds && (
-          <div className="legend">
-            <span><i className="dot" style={{ background: '#fbbf24' }} /> Lode / hard-rock</span>
-            <span><i className="dot" style={{ background: '#22d3ee' }} /> Placer</span>
-          </div>
-        )}
-        {visible.ownership && (
-          <p className="disclaimer">
-            Land status is informational only. Verify land status, claim status, and prospecting
-            rules with the relevant agency before digging. Mining claims: see the BLM MLRS portal.
-          </p>
-        )}
       </div>
     </div>
   )

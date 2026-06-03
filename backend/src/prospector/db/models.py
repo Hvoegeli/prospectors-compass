@@ -122,6 +122,30 @@ class UsminFeature(Base):
     )
 
 
+class RoadSegment(Base):
+    """A road line — public (Census TIGER) or Forest Service (USFS), for access.
+
+    `kind` distinguishes 'public' vs 'forest'. Re-ingest is scoped by
+    (state_fips, kind) so re-running one source doesn't wipe the other.
+    Supports PRD MVP5 distance-from-road / accessibility scoring.
+    """
+
+    __tablename__ = "roads"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    state_fips: Mapped[str] = mapped_column(String(2), nullable=False, index=True)
+    #: 'road' (drivable) or 'trail' (4WD/foot) — drives the two map toggles.
+    category: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    #: 'public' (TIGER) or 'forest' (USFS).
+    kind: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    name: Mapped[str | None] = mapped_column(String, nullable=True)
+    #: Class/drivability: Primary / Secondary / 4WD trail / (forest maint level).
+    road_class: Mapped[str | None] = mapped_column(String, nullable=True)
+    geom: Mapped[object] = mapped_column(
+        Geometry(geometry_type="MULTILINESTRING", srid=WGS84, spatial_index=True)
+    )
+
+
 class GeologicUnit(Base):
     """A geologic map-unit polygon, clipped to the focus area.
 

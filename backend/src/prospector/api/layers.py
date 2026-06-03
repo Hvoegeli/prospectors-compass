@@ -26,7 +26,12 @@ LAYERS: dict[str, str] = {
     "usmin": "usmin_features",
     "geology": "geologic_units",
     "ownership": "land_ownership",
+    "roads": "roads",
+    "trails": "roads",
 }
+
+#: Layers backed by a shared table, distinguished by a fixed category filter.
+_LAYER_CATEGORY: dict[str, str] = {"roads": "road", "trails": "trail"}
 
 # Tokenize the comma-joined commod1-3 into individual commodities for both the
 # facet list and the filter, so "Gold" matches a "Gold, Silver" site.
@@ -72,6 +77,10 @@ def get_layer(
 
     params: dict[str, object] = {"lim": limit}
     conditions: list[str] = []
+
+    if name in _LAYER_CATEGORY:
+        conditions.append("t.category = :category")
+        params["category"] = _LAYER_CATEGORY[name]
 
     if bbox:
         try:

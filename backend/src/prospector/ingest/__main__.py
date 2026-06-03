@@ -21,6 +21,7 @@ from prospector.ingest.focus_area import DEFAULT_REGION
 from prospector.ingest.geology import ingest_geology
 from prospector.ingest.mrds import ingest_mrds
 from prospector.ingest.padus import ingest_ownership
+from prospector.ingest.roads import ingest_roads
 from prospector.ingest.usmin import ingest_usmin
 
 
@@ -60,6 +61,13 @@ def _run_ownership() -> None:
     print(f"✓ Loaded {count} land-ownership polygons into PostGIS table 'land_ownership'.")
 
 
+def _run_roads() -> None:
+    region = DEFAULT_REGION
+    print(f"Ingesting public roads + trails for: {region.name}")
+    count = ingest_roads(region)
+    print(f"✓ Loaded {count} road/trail segments into PostGIS table 'roads'.")
+
+
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     parser = argparse.ArgumentParser(prog="prospector.ingest")
@@ -69,6 +77,7 @@ def main() -> None:
     sub.add_parser("usmin", help="Download + clip + load USGS USMIN topo mine features")
     sub.add_parser("geology", help="Download + clip + load USGS geologic unit polygons")
     sub.add_parser("ownership", help="Download + clip + load PAD-US land manager/owner polygons")
+    sub.add_parser("roads", help="Download + load public roads + 4WD trails (TIGER)")
     sub.add_parser("all", help="Run every ingestion step in order")
     args = parser.parse_args()
 
@@ -83,12 +92,15 @@ def main() -> None:
         _run_geology()
     elif args.command == "ownership":
         _run_ownership()
+    elif args.command == "roads":
+        _run_roads()
     elif args.command == "all":
         _run_counties()
         _run_mrds()
         _run_usmin()
         _run_geology()
         _run_ownership()
+        _run_roads()
 
 
 if __name__ == "__main__":
