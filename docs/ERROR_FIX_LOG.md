@@ -20,7 +20,13 @@ When an error or fix takes more than 5 minutes to diagnose, append an entry belo
 
 ## Log
 
-*No errors logged yet.*
+### 2026-06-01 — `uv run pytest` fails to spawn after project was moved
+
+**Error:** `error: Failed to spawn: \`pytest\`` / `Caused by: No such file or directory (os error 2)` — yet `.venv/bin/pytest` existed and `uv run python -m pytest` passed 10/10.
+**Context:** Resuming the project to start Group 2; running the documented sanity check `uv run pytest` from `backend/`.
+**Root cause:** The project folder was relocated (from `~/projects/prospectors-compass` to `~/Desktop/projects/Unfinished Projects/prospectors-compass`). Virtualenvs are not relocatable — every console-script in `.venv/bin/` hard-codes an absolute shebang to the interpreter at install time. The `pytest` script's shebang still pointed at the old, now-nonexistent `~/projects/.../.venv/bin/python`, so the kernel couldn't exec it. `python -m pytest` worked because it used the `python3` symlink directly rather than the baked script path.
+**Fix:** Rebuilt the venv in its new location: `rm -rf .venv && uv sync`. Regenerated all console scripts (`pytest`, `ruff`, `uvicorn`, …) with correct shebangs. Also added `[tool.uv] default-groups = ["dev"]` so `uv run pytest` resolves the dev group without `--group dev`.
+**Prevention:** After moving a project folder, always `rm -rf .venv && uv sync` before running anything. Better: don't commit the venv; treat it as disposable. Stale absolute paths in `NEXT_SESSION.md` were a tell — the documented `cd` path no longer existed.
 
 ## Common Issues to Watch For
 
@@ -36,6 +42,7 @@ When an error or fix takes more than 5 minutes to diagnose, append an entry belo
 - **Function-call argument truncation:** if the model returns a tool call with a giant JSON arg, watch for serialization issues. Prefer multiple small tools over one mega-tool.
 
 ### PostGIS
+- **Invalid source geometries (nested shells / self-intersections):** real-world polygon datasets (e.g. PAD-US federal-land boundaries) ship invalid geometries that silently break `ST_Within`/`ST_Intersects`. Run geopandas `.make_valid()` on the source BEFORE clipping/inserting, then coerce results to MultiPolygon (make_valid can yield a GeometryCollection). Verify with `SELECT count(*) WHERE NOT ST_IsValid(geom)` = 0. (See `ingest/padus.py`.)
 - **`ST_Intersects` slow without GIST index:** every spatial table needs `CREATE INDEX ... USING GIST (geom)`. Verify with `EXPLAIN ANALYZE`.
 - **SRID mismatch:** mixing SRID 4326 (WGS84) and SRID 3857 (web mercator) silently returns empty results. Standardize on 4326 storage; transform on the fly when needed.
 - **Watershed delineation expensive:** `ST_DWithin` over a DEM-derived flow grid can take seconds. Pre-compute watersheds for known drainage basins where possible.

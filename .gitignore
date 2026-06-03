@@ -34,10 +34,20 @@ ios/build/
 android/build/
 android/app/build/
 
-# === Map data (large; download/generate locally) ===
+# === Map / source data (download locally; NEVER commit) ===
+# All ingested datasets (USGS, MRDS, BLM, USFS, CGS, etc.) are downloaded per
+# machine and stay local — the repo ships the code that downloads, not the data.
 tiles/
 *.mbtiles
-data/raw/
+data/
+backend/data/
+*.shp
+*.shx
+*.dbf
+*.prj
+*.gpkg
+*.geojson
+!**/fixtures/**.geojson
 
 # === Logs ===
 *.log
