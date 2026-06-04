@@ -37,7 +37,8 @@ android/app/build/
 # === Map / source data (download locally; NEVER commit) ===
 # All ingested datasets (USGS, MRDS, BLM, USFS, CGS, etc.) are downloaded per
 # machine and stay local — the repo ships the code that downloads, not the data.
-tiles/
+tiles/*
+!tiles/config.json
 *.mbtiles
 data/
 backend/data/

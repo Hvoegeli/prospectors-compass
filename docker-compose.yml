@@ -22,5 +22,17 @@ services:
       retries: 5
     restart: unless-stopped
 
+  tileserver:
+    # Self-hosted basemap tiles (stack-locked: TileServer GL + MBTiles, no Mapbox).
+    # Serves ./tiles/hillshade.mbtiles built by `python -m prospector.ingest basemap`.
+    image: maptiler/tileserver-gl:latest
+    container_name: prospector-tiles
+    command: ["--config", "/data/config.json"]
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./tiles:/data:ro
+    restart: unless-stopped
+
 volumes:
   prospector_pgdata:

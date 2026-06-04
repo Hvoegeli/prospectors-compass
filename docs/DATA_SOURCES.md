@@ -21,6 +21,7 @@ All geometries are stored in **SRID 4326 (WGS84)** and clipped to the active
 | Historic metal-mining districts | Colorado Geological Survey ON-007-08D (per-state) | Public-use state-gov data (see note) | `ingest/cgs.py` → `mining_districts` |
 | Mineral resource potential | Colorado Geological Survey ON-007-03 (ArcGIS MapServer) | Public-use state-gov data (see note) | `ingest/cgs.py` → `mineral_potential` |
 | Abandoned mine-land hazards | Colorado Geological Survey ON-008-04 (per-state) | Public-use state-gov data (see note) | `ingest/cgs.py` → `aml_hazards` |
+| Elevation (hillshade basemap) | USGS 3DEP 1 arc-second DEM (per 1° tile) | Public domain (US Gov work, 17 U.S.C. §105) | `ingest/terrain.py` → `tiles/hillshade.mbtiles` |
 
 ---
 
@@ -195,6 +196,29 @@ ingestion proves worth the effort later.
 > attribution; we cite ON-007-08, ON-007-03, and ON-008-04 respectively. If any
 > redistribution restriction surfaces, revisit before bundling data (we never
 > commit the data itself — only the code that downloads it locally).
+
+## USGS 3DEP elevation → hillshade basemap
+
+- **URL pattern:** `https://prd-tnm.s3.amazonaws.com/StagedProducts/Elevation/1/TIFF/current/n{NN}w{WWW}/USGS_1_n{NN}w{WWW}.tif`
+  (TNM AWS staged bucket; keyless). USGS names each 1°×1° tile by its NW corner
+  (`nNN` spans lat [NN-1, NN]; `wWWW` spans lon [-WWW, -WWW+1]).
+- **Resolution:** 1 arc-second (~30 m) — right for a basemap; 1/3 arc-second (10 m)
+  would be ~9× larger for no visual gain at web-map zooms.
+- **Coverage in focus area:** 18 cells (~900 MB raw DEM, git-ignored under
+  `backend/data/raw/dem/`).
+- **Pipeline (`ingest/terrain.py`, GDAL via the `osgeo/gdal` Docker image):**
+  download cells → `gdalbuildvrt` mosaic → `gdalwarp` to EPSG:3857 →
+  `gdaldem hillshade -multidirectional` → `gdal_translate -of MBTILES` →
+  `gdaladdo` zoom overviews → `tiles/hillshade.mbtiles` (~160 MB, zoom 6–12).
+- **Why Docker for GDAL:** avoids the notoriously fragile local GDAL/Python-binding
+  install; consistent with the Docker-first infra (Postgres, TileServer GL).
+- **Serving:** TileServer GL (`docker compose up -d tileserver`) serves it at
+  `http://localhost:8080/data/hillshade/{z}/{x}/{y}.png`; the MapLibre map adds it
+  as a raster layer beneath the vector overlays.
+- **Build it:** `uv run python -m prospector.ingest basemap` (region-parameterized;
+  another user's region downloads its own cells — fits the localized-download model).
+- **Future:** contour lines are a cheap add from the same `dem_3857.tif`
+  (`gdal_contour` → vector tiles) if wanted later.
 
 ---
 

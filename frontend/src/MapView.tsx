@@ -7,17 +7,30 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 import './MapView.css'
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8000'
+const TILE_BASE = import.meta.env.VITE_TILE_BASE ?? 'http://localhost:8080'
 
 // I-70 corridor (Denver → Grand Junction).
 const CENTER: [number, number] = [-106.4, 39.3]
 const ZOOM = 6.6
 
-// Neutral background only — no external basemap tiles (stack locks self-hosted
-// MBTiles via TileServer GL, which is a later task). Our layers render on top.
+// Self-hosted hillshade basemap (TileServer GL) under a dark fallback background.
+// If hillshade.mbtiles isn't built yet, the raster tiles 404 (render transparent)
+// and the dark background shows through — the map still works. Vector overlays
+// are added on top in the load handler.
 const BASE_STYLE: StyleSpecification = {
   version: 8,
-  sources: {},
-  layers: [{ id: 'bg', type: 'background', paint: { 'background-color': '#0e1726' } }],
+  sources: {
+    hillshade: {
+      type: 'raster',
+      tiles: [`${TILE_BASE}/data/hillshade/{z}/{x}/{y}.png`],
+      tileSize: 256,
+      attribution: 'Elevation: USGS 3DEP',
+    },
+  },
+  layers: [
+    { id: 'bg', type: 'background', paint: { 'background-color': '#0e1726' } },
+    { id: 'hillshade', type: 'raster', source: 'hillshade', paint: { 'raster-opacity': 0.9 } },
+  ],
 }
 
 type LayerInfo = { id: string; label: string; group: 'overlay' | 'finds' }
@@ -218,11 +231,71 @@ const LAYER_LABEL: Record<string, string> = Object.fromEntries(
   LAYERS.map((l) => [l.id, l.label]),
 )
 
+// Human-readable popup labels for raw DB column names. Anything not listed falls
+// back to a generic prettifier (underscores → spaces, Title Case).
+const PROP_LABELS: Record<string, string> = {
+  url: 'Source',
+  web_page: 'Report (PDF)',
+  unit_name: 'Unit Name',
+  unit_age: 'Unit Age',
+  unit_link: 'Unit Link',
+  unit_desc: 'Description',
+  orig_label: 'Map Label',
+  generalized_lith: 'Generalized Lithology',
+  rocktype1: 'Rock Type 1',
+  rocktype2: 'Rock Type 2',
+  rocktype3: 'Rock Type 3',
+  manager_name: 'Manager',
+  manager_type: 'Manager Type',
+  owner_type: 'Owner Type',
+  public_access: 'Public Access',
+  as_of_date: 'As-of Date',
+  county_geoid: 'County',
+  county_1: 'County',
+  county_2: 'County (2nd)',
+  dev_stat: 'Development Status',
+  dep_type: 'Deposit Type',
+  commod1: 'Commodity 1',
+  commod2: 'Commodity 2',
+  commod3: 'Commodity 3',
+  site_name: 'Site Name',
+  ftr_type: 'Feature Type',
+  ftr_name: 'Feature Name',
+  topo_name: 'Topo Quad',
+  topo_date: 'Topo Date',
+  road_class: 'Road Class',
+  forest_name: 'Forest',
+  forest_code: 'Forest Code',
+  hazard_kind: 'Hazard Kind',
+  feature_type: 'Feature Type',
+  haz_rating: 'Hazard Rating',
+  env_rating: 'Environmental Rating',
+  au_placer: 'Placer Gold Potential',
+  pegmatite: 'Pegmatite Potential',
+  corundum: 'Corundum Potential',
+  rare_earth: 'Rare Earth Potential',
+  fluorite: 'Fluorite Potential',
+  formation: 'Formation',
+  quad: 'Quadrangle',
+}
+
+function prettyLabel(key: string): string {
+  return PROP_LABELS[key] ?? key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
+// URL-valued fields become a compact link (a raw URL would overflow the popup).
+function valueCell(value: string): string {
+  if (/^https?:\/\//i.test(value)) {
+    return `<a href="${esc(value)}" target="_blank" rel="noreferrer">Open ↗</a>`
+  }
+  return esc(value)
+}
+
 function featureRows(props: Record<string, unknown>): string {
   const skip = new Set(['id', 'state_fips'])
   return Object.entries(props)
     .filter(([k, v]) => !skip.has(k) && v !== null && v !== '')
-    .map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(String(v))}</td></tr>`)
+    .map(([k, v]) => `<tr><td>${esc(prettyLabel(k))}</td><td>${valueCell(String(v))}</td></tr>`)
     .join('')
 }
 
@@ -240,12 +313,30 @@ function popupHtml(features: maplibregl.MapGeoJSONFeature[]): string {
 
 type Facets = { commodities: string[]; deposit_types: string[] }
 
-function mrdsUrl(commodity: string, depType: string): string {
+// The heavy layers load by map viewport (bbox) so terrain + ~30k features stay
+// fast; the rest (small / contiguous context) load once in full.
+const BBOX_LAYERS = new Set(['mrds', 'usmin', 'potential', 'aml'])
+
+function bboxParam(map: maplibregl.Map): string {
+  const b = map.getBounds()
+  return `${b.getWest()},${b.getSouth()},${b.getEast()},${b.getNorth()}`
+}
+
+// Build the /layers fetch URL: bbox for the heavy layers, plus the MRDS filters.
+function layerUrl(
+  id: string,
+  map: maplibregl.Map | null,
+  commodity = '',
+  depType = '',
+): string {
   const p = new URLSearchParams()
-  if (commodity) p.set('commodity', commodity)
-  if (depType) p.set('dep_type', depType)
+  if (map && BBOX_LAYERS.has(id)) p.set('bbox', bboxParam(map))
+  if (id === 'mrds') {
+    if (commodity) p.set('commodity', commodity)
+    if (depType) p.set('dep_type', depType)
+  }
   const qs = p.toString()
-  return `${API_BASE}/layers/mrds${qs ? `?${qs}` : ''}`
+  return `${API_BASE}/layers/${id}${qs ? `?${qs}` : ''}`
 }
 
 export default function MapView() {
@@ -269,13 +360,13 @@ export default function MapView() {
       .catch(() => {})
   }, [])
 
-  // Re-query the MRDS layer whenever the target filters change.
+  // Re-query the MRDS layer whenever the target filters change (carries bbox too).
   useEffect(() => {
     const map = mapRef.current
     if (!map || !ready) return
     const src = map.getSource('mrds-src') as maplibregl.GeoJSONSource | undefined
     if (!src) return
-    fetch(mrdsUrl(commodity, depType))
+    fetch(layerUrl('mrds', map, commodity, depType))
       .then((r) => r.json())
       .then((data: GeoJSON.FeatureCollection) => {
         src.setData(data)
@@ -284,6 +375,32 @@ export default function MapView() {
       })
       .catch(() => {})
   }, [commodity, depType, ready])
+
+  // Reload the bbox-driven layers when the viewport settles (debounced). Re-binds
+  // on filter change so MRDS keeps its commodity/deposit filter while panning.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !ready) return
+    let timer: ReturnType<typeof setTimeout>
+    const onMoveEnd = () => {
+      clearTimeout(timer)
+      timer = setTimeout(() => {
+        for (const id of BBOX_LAYERS) {
+          const src = map.getSource(`${id}-src`) as maplibregl.GeoJSONSource | undefined
+          if (!src) continue
+          fetch(layerUrl(id, map, commodity, depType))
+            .then((r) => r.json())
+            .then((data: GeoJSON.FeatureCollection) => src.setData(data))
+            .catch(() => {})
+        }
+      }, 300)
+    }
+    map.on('moveend', onMoveEnd)
+    return () => {
+      map.off('moveend', onMoveEnd)
+      clearTimeout(timer)
+    }
+  }, [ready, commodity, depType])
 
   // Recolor the mineral-potential layer by the chosen target — no re-query needed,
   // since every polygon already carries all the rating columns.
@@ -309,7 +426,7 @@ export default function MapView() {
       let loaded = 0
       for (const { id } of LAYERS) {
         try {
-          const res = await fetch(`${API_BASE}/layers/${id}`)
+          const res = await fetch(layerUrl(id, map))
           if (!res.ok) throw new Error(`${res.status}`)
           const data = (await res.json()) as GeoJSON.FeatureCollection
           map.addSource(`${id}-src`, { type: 'geojson', data })
@@ -333,9 +450,13 @@ export default function MapView() {
       ]
       const feats = map.queryRenderedFeatures(box, { layers: LAYERS.map((l) => l.id) })
       if (!feats.length) return
-      // Show one section per layer present (rock, land manager, mine, road),
-      // ordered most-specific first.
-      const order = ['mrds', 'usmin', 'roads', 'trails', 'geology', 'ownership', 'counties']
+      // Show one section per layer present (mine, hazard, target, rock, land,
+      // road…), ordered most-specific first. Every layer is listed so nothing is
+      // silently dropped from the popup.
+      const order = [
+        'mrds', 'usmin', 'aml', 'districts', 'potential',
+        'roads', 'trails', 'geology', 'ownership', 'forests', 'counties',
+      ]
       const picked = order
         .map((id) => feats.find((f) => f.layer.id === id))
         .filter((f): f is maplibregl.MapGeoJSONFeature => f !== undefined)
