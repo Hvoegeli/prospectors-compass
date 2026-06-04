@@ -29,6 +29,7 @@ from prospector.ingest.storage import PROCESSED_DIR, ensure_dir
 from prospector.ingest.terrain import build_basemap
 from prospector.ingest.usfs_forest import ingest_forests
 from prospector.ingest.usmin import ingest_usmin
+from prospector.ingest.watershed import ingest_watersheds
 
 
 def _run_counties() -> None:
@@ -109,6 +110,13 @@ def _run_aml() -> None:
     print(f"✓ Loaded {count} AML hazard points into PostGIS table 'aml_hazards'.")
 
 
+def _run_watershed() -> None:
+    region = DEFAULT_REGION
+    print(f"Ingesting USGS WBD HUC12 subwatersheds for: {region.name}")
+    count = ingest_watersheds(region)
+    print(f"✓ Loaded {count} subwatersheds into PostGIS table 'watersheds'.")
+
+
 def _run_basemap() -> None:
     region = DEFAULT_REGION
     print(f"Building hillshade basemap (DEM → MBTiles) for: {region.name}")
@@ -130,6 +138,7 @@ def _run_all() -> None:
     _run_districts()
     _run_potential()
     _run_aml()
+    _run_watershed()
 
 
 def _run_refresh() -> None:
@@ -168,6 +177,7 @@ def main() -> None:
     sub.add_parser("districts", help="Download + load CGS historic metal-mining districts")
     sub.add_parser("potential", help="Download + load CGS mineral-resource potential")
     sub.add_parser("aml", help="Download + load CGS abandoned-mine-land hazards")
+    sub.add_parser("watershed", help="Download + load USGS WBD HUC12 subwatersheds")
     sub.add_parser("all", help="Run every ingestion step in order")
     sub.add_parser("refresh", help="Force fresh re-download + re-ingest of every source")
     sub.add_parser("basemap", help="Build the hillshade basemap MBTiles (DEM via GDAL/Docker)")
@@ -196,6 +206,8 @@ def main() -> None:
         _run_potential()
     elif args.command == "aml":
         _run_aml()
+    elif args.command == "watershed":
+        _run_watershed()
     elif args.command == "all":
         _run_all()
     elif args.command == "refresh":

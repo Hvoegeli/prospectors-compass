@@ -27,11 +27,12 @@ _Clip every spatial layer to the 10 focus-area counties (PRD §7.1): Denver, Jef
 - _Deferred to Phase 4: Texas Bureau of Economic Geology atlas + mineral resources data (revive when Texas re-enters scope)._
 
 ### 3. Spatial query tools  [MVP5]
-- [ ] Watershed delineation (PostGIS + DEM)
-- [ ] Buffer + intersection helpers
-- [ ] Distance-from-road / accessibility scoring
-- [ ] Slope and aspect analysis
-- [ ] Unit tests for each spatial function
+_Framework-agnostic functions in `backend/src/prospector/spatial/` (zero LLM cost); Group 4 wraps them as agent tools._
+- [x] Watershed lookup — `spatial/watershed.py` `watershed_at()` via ingested USGS WBD HUC12 polygons. _Deviation from "PostGIS + DEM": uses authoritative pre-delineated WBD subwatersheds (no flow-routing dep); true point-catchment delineation deferred. Surfaced + approved 2026-06-04._
+- [x] Buffer + intersection helpers — `spatial/proximity.py` (`features_within`, `point_in`)
+- [x] Distance-from-road / accessibility scoring — `spatial/access.py` (`nearest_road`, `accessibility`)
+- [x] Slope and aspect analysis — `spatial/terrain.py` (`slope_aspect_at`, `terrain_stats`) sampling `gdaldem`-derived rasters via dockerized `gdallocationinfo`
+- [x] Unit tests for each spatial function — `tests/test_spatial_*.py` (13 tests; skip gracefully without data)
 
 ### 4. LangGraph supervisor + subagents  [MVP3]
 - [ ] Define `StateGraph` with supervisor + 7 subagent nodes

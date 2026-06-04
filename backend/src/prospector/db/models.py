@@ -7,7 +7,7 @@ All geometries are stored in SRID 4326 (WGS84 lat/lon) — the project standard
 from __future__ import annotations
 
 from geoalchemy2 import Geometry
-from sqlalchemy import Integer, String
+from sqlalchemy import Float, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from prospector.db.base import Base
@@ -300,4 +300,32 @@ class AmlHazard(Base):
     comments: Mapped[str | None] = mapped_column(String, nullable=True)
     geom: Mapped[object] = mapped_column(
         Geometry(geometry_type="POINT", srid=WGS84, spatial_index=True)
+    )
+
+
+class Watershed(Base):
+    """A HUC12 subwatershed polygon (USGS Watershed Boundary Dataset), clipped
+    to the focus area.
+
+    Source: USGS WBD via the TNM ArcGIS MapServer (12-digit hydrologic units).
+    Answers "which drainage basin is this point in, and what's downstream"
+    (`downstream_huc` = WBD `tohuc`) — placer gold follows drainages, so the
+    containing subwatershed is a useful prospecting unit. Coverage layer;
+    re-ingest scoped by `state_fips`.
+    """
+
+    __tablename__ = "watersheds"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    state_fips: Mapped[str] = mapped_column(String(2), nullable=False, index=True)
+    #: 12-digit hydrologic unit code.
+    huc12: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    #: Subwatershed name, e.g. "Upper Clear Creek".
+    name: Mapped[str | None] = mapped_column(String, nullable=True)
+    #: Downstream HUC this subwatershed drains into (WBD `tohuc`).
+    downstream_huc: Mapped[str | None] = mapped_column(String, nullable=True)
+    #: Area in square kilometers.
+    areasqkm: Mapped[float | None] = mapped_column(Float, nullable=True)
+    geom: Mapped[object] = mapped_column(
+        Geometry(geometry_type="MULTIPOLYGON", srid=WGS84, spatial_index=True)
     )
