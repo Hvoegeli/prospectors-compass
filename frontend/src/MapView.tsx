@@ -330,7 +330,11 @@ function layerUrl(
   depType = '',
 ): string {
   const p = new URLSearchParams()
-  if (map && BBOX_LAYERS.has(id)) p.set('bbox', bboxParam(map))
+  // When MRDS has a commodity/deposit filter, show EVERY match across the focus
+  // area (the filter exists to help you find where a target is) — so skip the
+  // viewport bbox in that case. Otherwise the heavy layers load by viewport.
+  const mrdsFiltered = id === 'mrds' && Boolean(commodity || depType)
+  if (map && BBOX_LAYERS.has(id) && !mrdsFiltered) p.set('bbox', bboxParam(map))
   if (id === 'mrds') {
     if (commodity) p.set('commodity', commodity)
     if (depType) p.set('dep_type', depType)

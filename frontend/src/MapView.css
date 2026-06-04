@@ -146,6 +146,14 @@
   padding-right: 24px;
 }
 
+/* Tall multi-layer popups scroll internally instead of running off-screen. The
+   X button lives on the parent (.maplibregl-popup-content), so it stays pinned
+   while this inner container scrolls. */
+.popup {
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
 .popup table {
   width: 100%;
   border-collapse: collapse;
