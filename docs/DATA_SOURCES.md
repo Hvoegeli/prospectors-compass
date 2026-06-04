@@ -22,6 +22,8 @@ All geometries are stored in **SRID 4326 (WGS84)** and clipped to the active
 | Mineral resource potential | Colorado Geological Survey ON-007-03 (ArcGIS MapServer) | Public-use state-gov data (see note) | `ingest/cgs.py` → `mineral_potential` |
 | Abandoned mine-land hazards | Colorado Geological Survey ON-008-04 (per-state) | Public-use state-gov data (see note) | `ingest/cgs.py` → `aml_hazards` |
 | Elevation (hillshade basemap) | USGS 3DEP 1 arc-second DEM (per 1° tile) | Public domain (US Gov work, 17 U.S.C. §105) | `ingest/terrain.py` → `tiles/hillshade.mbtiles` |
+| Slope / aspect (terrain analysis) | Derived from the 3DEP DEM (`gdaldem`) | Public domain (US Gov work, 17 U.S.C. §105) | `ingest/terrain.py` → `processed/slope.tif`, `aspect.tif` |
+| Subwatersheds (HUC12) | USGS Watershed Boundary Dataset (WBD) | Public domain (US Gov work, 17 U.S.C. §105) | `ingest/watershed.py` → `watersheds` |
 
 ---
 
@@ -219,6 +221,26 @@ ingestion proves worth the effort later.
   another user's region downloads its own cells — fits the localized-download model).
 - **Future:** contour lines are a cheap add from the same `dem_3857.tif`
   (`gdal_contour` → vector tiles) if wanted later.
+- **Slope / aspect derivatives:** `build_terrain_derivatives()` runs
+  `gdaldem slope` / `gdaldem aspect` on `dem_3857.tif` →
+  `processed/slope.tif`, `processed/aspect.tif` (DEFLATE-compressed, ~770 MB
+  each, git-ignored). These back the slope/aspect spatial tool, sampled in-place
+  via dockerized `gdallocationinfo` (no Python raster dependency). Slope is in
+  degrees; web-mercator slightly exaggerates slope away from the equator
+  (acceptable for "how steep, roughly").
+
+## USGS WBD HUC12 subwatersheds (Group 3 — spatial tools)
+
+- **Service:** `https://hydro.nationalmap.gov/arcgis/rest/services/wbd/MapServer/6`
+  (layer 6 = 12-digit hydrologic units), bbox-queried + paginated via the shared
+  `ingest/arcgis.py` helper (stable `orderByFields=objectid`; small pages because
+  the WBD service 504s on large geometry requests).
+- **Fields kept:** `huc12`, `name`, `tohuc` (→ `downstream_huc`), `areasqkm`.
+- **Coverage in focus area:** ~492 HUC12 subwatersheds (clipped from ~870 in-bbox
+  to the county union). Spans the continental divide — Arkansas (HUC 11) and
+  South Platte/Missouri (HUC 10) on the east, Upper Colorado (HUC 14) on the west.
+- **Used by:** `spatial/watershed.py` (`watershed_at`) — which drainage basin a
+  point sits in + where it drains. Placer gold follows drainages.
 
 ---
 
