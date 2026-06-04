@@ -34,36 +34,30 @@ _Framework-agnostic functions in `backend/src/prospector/spatial/` (zero LLM cos
 - [x] Slope and aspect analysis — `spatial/terrain.py` (`slope_aspect_at`, `terrain_stats`) sampling `gdaldem`-derived rasters via dockerized `gdallocationinfo`
 - [x] Unit tests for each spatial function — `tests/test_spatial_*.py` (13 tests; skip gracefully without data)
 
-### 4. LangGraph supervisor + subagents  [MVP3]
-- [ ] Define `StateGraph` with supervisor + 7 subagent nodes
-- [ ] Define subagent response contract (`answer`, `evidence[]`, `confidence_tag`, `map_features[]`, `reasoning_chain`) as Pydantic model
-- [ ] Implement Geology subagent
-- [ ] Implement Maps/GIS subagent
-- [ ] Implement Mining History subagent
-- [ ] Implement Land Status subagent (always emits disclaimer)
-- [ ] Implement Field Guidance subagent
-- [ ] Implement Education/Knowledge subagent
-- [ ] Wire prompt caching for system prompts and tool definitions
-- [ ] `LLM_MOCK_MODE=true` path returns canned subagent responses for dev iteration
+### 4. ~~LangGraph supervisor + subagents~~ → DEFERRED (optional future AI)  [MVP3]
+_Cut from v1 (offline-first; cloud AI can't run in the field). Preserved as an
+optional, online-only future layer — see `CLAUDE.md` "Deferred: optional AI" and
+PRD "Final / stretch." The 7 subagent "domains" live on as scoring factors /
+report sections in the rule-based engine (Group 7), not as AI agents._
 
-### 5. Verification & citation enforcement  [MVP7]
-- [ ] Supervisor "no claim without citation" pass before responding
-- [ ] Conflict detection between subagents
-- [ ] Reasoning-chain rendering in synthesized response
-- [ ] Hazard surfacing required when abandoned mines or terrain risks are present in recommendation
+### 5. Verification — factor rationale (folds into Group 7)  [MVP7]
+- [ ] Every recommendation surfaces the contributing factors that produced its score (each factor = its own evidence; deterministic, no AI)
+- [ ] Competing/negative factors shown (e.g. favorable geology BUT steep + far from road)
+- [ ] Hazard surfacing required when abandoned mines or terrain risks are near a recommendation
+- [ ] Land-status disclaimer always present
 
-### 6. Knowledge corpus + pgvector  [MVP10]
-- [ ] Curate public-domain document list (USGS pubs, CGS, USFS/BLM info)
-- [ ] Document-licensing review log (track license per source)
-- [ ] Ingest + chunk + embed
-- [ ] Retrieval helper for the Education and Field Guidance subagents
+### 6. ~~Knowledge corpus + pgvector~~ → DEFERRED (was AI RAG)  [MVP10]
+_Replaced in v1 by a curated **static field guide** (mineral/ore properties,
+host-rock associations, dichotomous key). pgvector stays installed but unused.
+RAG returns only with the optional AI layer._
 
-### 7. Recommendation engine  [MVP6][MVP1][MVP2]
+### 7. Rule-based recommendation engine (the v1 "brain")  [MVP6][MVP1][MVP2]
 - [ ] Region/state selector UI (CO)
-- [ ] Target-material selector UI
-- [ ] Supervisor query that returns ranked candidate areas
-- [ ] Rationale + confidence band rendering in UI
+- [ ] Target-material selector UI (gold placer/lode, silver, gems, …)
+- [ ] **Weighted-overlay scoring** over the data layers + `spatial/` tools (mineral potential, districts, ownership, accessibility/distance-from-road, slope, watershed, hazards) → ranked candidate areas. Deterministic, offline.
+- [ ] Factor-by-factor rationale + confidence band rendering in UI (per Group 5)
 - [ ] "Pin top candidate" + save-area flow
+- [ ] Non-AI field guide / dichotomous key (identification reference)
 
 ### 8. Desktop map  [MVP9]
 - [~] MapLibre GL JS canvas with panel layout (map + inspector popups done; chat panel pending Groups 3–4)
@@ -74,7 +68,7 @@ _Framework-agnostic functions in `backend/src/prospector/spatial/` (zero LLM cos
 - [x] bbox-driven loading for the heavy layers (viewport-scoped fetch on pan/zoom)
 
 ### 9. Trip planning (desktop)  [MVP14]
-- [ ] Trip model (date range + area + waypoints + finds + chat history)
+- [ ] Trip model (date range + area + waypoints + finds + notes)
 - [ ] Save area to trip
 - [ ] Define waypoints on the map
 - [ ] Trip detail view
@@ -84,18 +78,15 @@ _Framework-agnostic functions in `backend/src/prospector/spatial/` (zero LLM cos
 - [ ] Session token signing + verification
 - [ ] Single user identity used by both desktop and mobile
 
-### 11. Eval suite (initial)  [MVP15]
-- [ ] `evals/cases/` folder structure
-- [ ] 10 golden cases for Colorado (Texas cases deferred to Phase 4)
-- [ ] Snapshot replay runner
-- [ ] Manual run script (`evals/run.py`)
-- [ ] Failed responses easy to add as new eval cases
+### 11. Test suite (deterministic)  [MVP15]
+- [ ] Unit tests for the scoring functions (known inputs → expected ranks/factors)
+- [ ] Integration tests over the spatial tools (already started: `tests/test_spatial_*.py`)
+- [ ] Fixture areas with hand-checked expected recommendations
+- _Golden LLM snapshot replay / LangSmith deferred with the optional AI layer._
 
-### 12. Observability  [MVP15][MVP16]
-- [ ] LangSmith free-tier integration confirmed working (traces visible)
-- [ ] Trace tagging by query type (recommendation / specimen-id / education)
-- [ ] Per-run cost log (tokens + dollars)
-- [ ] Confirm prompt cache hit rate ≥ 50% on first 20 real queries
+### 12. ~~Observability (LangSmith)~~ → DEFERRED with AI  [MVP15][MVP16]
+_No LLM tracing in v1 (no AI). Local logging only; reinstate LangSmith + cost/cache
+metrics if the optional AI layer is added._
 
 ## Phase 2: Polish — iOS Mobile Field App
 
@@ -127,23 +118,19 @@ _Framework-agnostic functions in `backend/src/prospector/spatial/` (zero LLM cos
 
 ## Phase 3: Final — Specimen ID + Eval Gate + Submission
 
-### 18. Specimen ID subagent  [MVP13]
-- [ ] Claude Haiku 4.5 vision wiring
-- [ ] GPS-conditioned plausibility filter from Geology subagent
-- [ ] Confidence band always rendered
-- [ ] <60% confidence → structurally locked into "field tests" mode (cannot name specimen)
-- [ ] Integration into mobile camera flow
+### 18. Specimen ID — non-AI dichotomous key  [MVP13]
+- [ ] Property-based key (hardness, streak, luster, color, magnetism, heft, …) → yes/no flow
+- [ ] GPS/region plausibility hint (favor minerals consistent with local geology)
+- [ ] Confidence band always rendered; below threshold → "run these field tests" (never names the specimen)
+- [ ] Works fully offline; integrate into mobile flow
+- _AI/vision photo-ID (cloud or on-device) deferred to the optional AI layer._
 
-### 19. Specimen ID eval set
-- [ ] Assemble 50–100 known-label specimen photos (own + open data like Mindat)
-- [ ] Top-1 accuracy harness
-- [ ] Calibration check ("high confidence" → correct ≥ 90%)
-- [ ] Decide: stick with prompted vision OR add RAG reference-image retrieval
+### 19. ~~Specimen ID eval set (vision)~~ → DEFERRED with AI vision
+_Belongs to the optional AI photo-ID layer; not needed for the non-AI key._
 
-### 20. Final eval pass + cost audit
-- [ ] Run full golden eval suite, fix regressions
-- [ ] Confirm total spend < $10 hard cap
-- [ ] Confirm prompt cache hit rate ≥ 50%
+### 20. Final pass + audit
+- [ ] Run the full (deterministic) test suite, fix regressions
+- [ ] Confirm app runs fully offline (no network calls in the field path)
 - [ ] Document any open questions in `docs/MEMO.md`
 
 ### 21. Submission readiness
