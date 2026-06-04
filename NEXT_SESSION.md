@@ -26,13 +26,18 @@ disclaimer. **Not yet visually checked in a browser** — run it (see "To see th
 
 ### To see the map
 ```bash
-# terminal 1 — backend
-docker compose up -d
+# terminal 1 — backend + DB + tileserver
+docker compose up -d                # postgres (1776) + tileserver-gl (8080)
 cd backend && uv run uvicorn prospector.main:app --port 8000
 # terminal 2 — frontend
 cd frontend && npm run dev          # http://localhost:5173
 ```
 If layers don't load: confirm the API at http://localhost:8000/layers and that the DB has data (`uv run python -m prospector.ingest all`).
+
+**Basemap (hillshade):** built once with `uv run python -m prospector.ingest basemap`
+(downloads ~900 MB of USGS 3DEP DEM, runs GDAL via Docker → `tiles/hillshade.mbtiles`,
+~160 MB). TileServer GL serves it at http://localhost:8080/data/hillshade/{z}/{x}/{y}.png.
+If the basemap looks blank, the mbtiles isn't built yet (map still works on the dark bg).
 
 ## Map now has (all toggleable)
 

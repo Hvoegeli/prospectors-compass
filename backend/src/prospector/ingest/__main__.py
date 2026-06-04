@@ -26,6 +26,7 @@ from prospector.ingest.mrds import ingest_mrds
 from prospector.ingest.padus import ingest_ownership
 from prospector.ingest.roads import ingest_forest, ingest_roads
 from prospector.ingest.storage import PROCESSED_DIR, ensure_dir
+from prospector.ingest.terrain import build_basemap
 from prospector.ingest.usfs_forest import ingest_forests
 from prospector.ingest.usmin import ingest_usmin
 
@@ -108,6 +109,14 @@ def _run_aml() -> None:
     print(f"✓ Loaded {count} AML hazard points into PostGIS table 'aml_hazards'.")
 
 
+def _run_basemap() -> None:
+    region = DEFAULT_REGION
+    print(f"Building hillshade basemap (DEM → MBTiles) for: {region.name}")
+    print("Downloads USGS 3DEP DEM cells and runs GDAL via Docker — this is slow.")
+    out = build_basemap(region)
+    print(f"✓ Built {out}. Start TileServer GL: docker compose up -d tileserver.")
+
+
 def _run_all() -> None:
     """Run every ingestion step in dependency order (counties first — it's the clip mask)."""
     _run_counties()
@@ -161,6 +170,7 @@ def main() -> None:
     sub.add_parser("aml", help="Download + load CGS abandoned-mine-land hazards")
     sub.add_parser("all", help="Run every ingestion step in order")
     sub.add_parser("refresh", help="Force fresh re-download + re-ingest of every source")
+    sub.add_parser("basemap", help="Build the hillshade basemap MBTiles (DEM via GDAL/Docker)")
     args = parser.parse_args()
 
     # Clipping needs the county mask, so counties must come first.
@@ -190,6 +200,8 @@ def main() -> None:
         _run_all()
     elif args.command == "refresh":
         _run_refresh()
+    elif args.command == "basemap":
+        _run_basemap()
 
 
 if __name__ == "__main__":

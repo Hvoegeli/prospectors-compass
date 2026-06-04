@@ -65,11 +65,12 @@ _Clip every spatial layer to the 10 focus-area counties (PRD §7.1): Denver, Jef
 - [ ] "Pin top candidate" + save-area flow
 
 ### 8. Desktop map  [MVP9]
-- [ ] MapLibre GL JS canvas with multi-panel layout (map + chat + inspector)
-- [ ] Self-hosted TileServer GL serving USGS topo + DEM hillshade + state geo rasters
-- [ ] Overlay layers: geology, mines (MRDS/USMIN), land status, drainage, user pins
-- [ ] Click-to-inspect feature popups with source attribution
-- [ ] Land-status disclaimer always visible when land-status layer is on
+- [~] MapLibre GL JS canvas with panel layout (map + inspector popups done; chat panel pending Groups 3–4)
+- [x] Self-hosted TileServer GL serving DEM **hillshade** basemap (`ingest/terrain.py` → `tiles/hillshade.mbtiles`, served on :8080). _USGS topo quads + state geo rasters deferred — hillshade first; contours a cheap later add from the same DEM._
+- [~] Overlay layers: geology, mines (MRDS/USMIN), land status all done + mining districts/potential/AML/forests/roads/trails; drainage + user pins pending
+- [x] Click-to-inspect feature popups with source attribution (multi-layer popups; URL/report fields render as "Open ↗" links)
+- [x] Land-status disclaimer always visible when land-status (ownership) layer is on
+- [x] bbox-driven loading for the heavy layers (viewport-scoped fetch on pan/zoom)
 
 ### 9. Trip planning (desktop)  [MVP14]
 - [ ] Trip model (date range + area + waypoints + finds + chat history)
