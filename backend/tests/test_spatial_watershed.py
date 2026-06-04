@@ -3,31 +3,14 @@
 Skips when Postgres is unreachable or the watersheds layer isn't ingested.
 """
 
-import psycopg
 import pytest
 
-from prospector.config import settings
 from prospector.spatial.watershed import watershed_at
 
 
 @pytest.fixture(scope="module")
-def _watersheds_ready():
-    try:
-        conn = psycopg.connect(settings.database_url, connect_timeout=2)
-    except psycopg.OperationalError as exc:
-        pytest.skip(f"Postgres not reachable: {exc}")
-    with conn.cursor() as cur:
-        cur.execute(
-            "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='watersheds')"
-        )
-        ok = cur.fetchone()[0]
-        if ok:
-            cur.execute("SELECT count(*) FROM watersheds")
-            ok = cur.fetchone()[0] > 0
-    conn.close()
-    if not ok:
-        pytest.skip("watersheds not ingested — run `ingest watershed`")
-    return True
+def _watersheds_ready(require_table):
+    require_table("watersheds")
 
 
 def test_leadville_is_in_arkansas_headwaters(_watersheds_ready):

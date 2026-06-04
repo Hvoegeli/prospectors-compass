@@ -10,11 +10,7 @@ Layer names are whitelisted → the table name in the SQL is never user input
 
 from __future__ import annotations
 
-from sqlalchemy import text
-
-from prospector.db.base import engine
-
-_PT = "ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)"
+from prospector.spatial._db import PT, query_all
 
 #: Friendly layer name → PostGIS table. Whitelist (guards the SQL table name).
 _TABLES: dict[str, str] = {
@@ -48,19 +44,16 @@ def features_within(
     added ``meters`` distance, nearest first. ``limit`` caps the result count.
     """
     table = _table(layer)
-    sql = text(
-        f"""
+    sql = f"""
         SELECT to_jsonb(t) - 'geom' AS props,
-               ST_Distance(geography(t.geom), geography({_PT})) AS meters
+               ST_Distance(geography(t.geom), geography({PT})) AS meters
         FROM {table} t
-        WHERE ST_DWithin(geography(t.geom), geography({_PT}), :radius)
+        WHERE ST_DWithin(geography(t.geom), geography({PT}), :radius)
         ORDER BY meters
         LIMIT :limit
-        """  # noqa: S608 — table from whitelist, not user input
-    )
+    """  # noqa: S608 — table from whitelist, not user input
     params = {"lon": lon, "lat": lat, "radius": radius_m, "limit": limit}
-    with engine.connect() as conn:
-        rows = conn.execute(sql, params).mappings().all()
+    rows = query_all(sql, params)
     return [{**r["props"], "meters": round(r["meters"], 1)} for r in rows]
 
 
@@ -72,13 +65,10 @@ def point_in(layer: str, lon: float, lat: float) -> list[dict]:
     on a line/point geometry).
     """
     table = _table(layer)
-    sql = text(
-        f"""
+    sql = f"""
         SELECT to_jsonb(t) - 'geom' AS props
         FROM {table} t
-        WHERE ST_Contains(t.geom, {_PT})
-        """  # noqa: S608 — table from whitelist, not user input
-    )
-    with engine.connect() as conn:
-        rows = conn.execute(sql, {"lon": lon, "lat": lat}).mappings().all()
+        WHERE ST_Contains(t.geom, {PT})
+    """  # noqa: S608 — table from whitelist, not user input
+    rows = query_all(sql, {"lon": lon, "lat": lat})
     return [r["props"] for r in rows]

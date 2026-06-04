@@ -16,7 +16,6 @@ import logging
 
 import geopandas as gpd
 from geoalchemy2.shape import from_shape
-from shapely.geometry import MultiPolygon
 from sqlalchemy import delete
 
 from prospector.db.base import Base, SessionLocal, engine
@@ -24,7 +23,7 @@ from prospector.db.models import AdminForest
 from prospector.ingest.census import load_region_counties
 from prospector.ingest.focus_area import DEFAULT_REGION, DownloadRegion
 from prospector.ingest.storage import RAW_DIR, download_file
-from prospector.ingest.util import na_to_none
+from prospector.ingest.util import na_to_none, to_multipolygon
 
 log = logging.getLogger(__name__)
 
@@ -34,16 +33,6 @@ ADMIN_FOREST_URL = (
 _ZIP_PATH = RAW_DIR / "usfs" / "AdministrativeForest.zip"
 _LAYER = "S_USA.AdministrativeForest"
 WGS84 = 4326
-
-
-def _to_multipolygon(geom: object) -> MultiPolygon | None:
-    if geom is None or geom.is_empty:
-        return None
-    if geom.geom_type == "MultiPolygon":
-        return geom
-    if geom.geom_type == "Polygon":
-        return MultiPolygon([geom])
-    return None
 
 
 def load_region_forests(region: DownloadRegion = DEFAULT_REGION) -> gpd.GeoDataFrame:
@@ -58,7 +47,7 @@ def load_region_forests(region: DownloadRegion = DEFAULT_REGION) -> gpd.GeoDataF
     gdf = gdf.to_crs(epsg=WGS84)
     clipped = gpd.clip(gdf, mask, keep_geom_type=True)
     clipped = clipped[clipped.geometry.notna() & ~clipped.geometry.is_empty].copy()
-    clipped["geometry"] = clipped.geometry.apply(_to_multipolygon)
+    clipped["geometry"] = clipped.geometry.apply(to_multipolygon)
     return clipped[clipped.geometry.notna()].copy()
 
 

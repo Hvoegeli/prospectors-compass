@@ -3,32 +3,14 @@
 Skips when Postgres is unreachable or the roads layer isn't ingested.
 """
 
-import psycopg
 import pytest
 
-from prospector.config import settings
 from prospector.spatial.access import accessibility, nearest_road
 
 
 @pytest.fixture(scope="module")
-def _roads_ready() -> bool:
-    try:
-        conn = psycopg.connect(settings.database_url, connect_timeout=2)
-    except psycopg.OperationalError as exc:
-        pytest.skip(f"Postgres not reachable: {exc}")
-    with conn.cursor() as cur:
-        cur.execute(
-            "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='roads')"
-        )
-        if not cur.fetchone()[0]:
-            conn.close()
-            pytest.skip("roads table not created — run the ingest CLI")
-        cur.execute("SELECT count(*) FROM roads")
-        empty = cur.fetchone()[0] == 0
-    conn.close()
-    if empty:
-        pytest.skip("roads table empty — run the ingest CLI")
-    return True
+def _roads_ready(require_table):
+    require_table("roads")
 
 
 # Idaho Springs sits right on I-70 / US-40.
