@@ -7,11 +7,7 @@ useful prospecting context unit.
 
 from __future__ import annotations
 
-from sqlalchemy import text
-
-from prospector.db.base import engine
-
-_PT = "ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)"
+from prospector.spatial._db import PT, query_first
 
 
 def watershed_at(lon: float, lat: float) -> dict | None:
@@ -20,14 +16,10 @@ def watershed_at(lon: float, lat: float) -> dict | None:
     Returns ``{huc12, name, downstream_huc, areasqkm}``, or ``None`` if the point
     is outside the ingested watersheds (e.g. outside the focus area).
     """
-    sql = text(
-        f"""
+    sql = f"""
         SELECT huc12, name, downstream_huc, areasqkm
         FROM watersheds
-        WHERE ST_Contains(geom, {_PT})
+        WHERE ST_Contains(geom, {PT})
         LIMIT 1
-        """
-    )
-    with engine.connect() as conn:
-        row = conn.execute(sql, {"lon": lon, "lat": lat}).mappings().first()
-    return dict(row) if row else None
+    """
+    return query_first(sql, {"lon": lon, "lat": lat})

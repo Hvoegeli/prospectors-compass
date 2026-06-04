@@ -14,7 +14,6 @@ import logging
 
 import geopandas as gpd
 from geoalchemy2.shape import from_shape
-from shapely.geometry import MultiPolygon
 from sqlalchemy import delete
 
 from prospector.db.base import Base, SessionLocal, engine
@@ -22,7 +21,7 @@ from prospector.db.models import Watershed
 from prospector.ingest.arcgis import fetch_features
 from prospector.ingest.census import load_region_counties
 from prospector.ingest.focus_area import DEFAULT_REGION, DownloadRegion
-from prospector.ingest.util import na_to_none
+from prospector.ingest.util import na_to_float, na_to_none, to_multipolygon
 
 log = logging.getLogger(__name__)
 
@@ -31,16 +30,6 @@ WBD_HUC12_QUERY = (
     "https://hydro.nationalmap.gov/arcgis/rest/services/wbd/MapServer/6/query"
 )
 _OUT_FIELDS = "huc12,name,tohuc,areasqkm"
-
-
-def _to_multipolygon(geom: object) -> MultiPolygon | None:
-    if geom is None or geom.is_empty:
-        return None
-    if geom.geom_type == "MultiPolygon":
-        return geom
-    if geom.geom_type == "Polygon":
-        return MultiPolygon([geom])
-    return None
 
 
 def load_region_watersheds(region: DownloadRegion = DEFAULT_REGION) -> gpd.GeoDataFrame:
@@ -60,7 +49,7 @@ def load_region_watersheds(region: DownloadRegion = DEFAULT_REGION) -> gpd.GeoDa
     gdf = gpd.GeoDataFrame.from_features(features, crs=WGS84)
     clipped = gpd.clip(gdf, mask, keep_geom_type=True)
     clipped = clipped[clipped.geometry.notna() & ~clipped.geometry.is_empty].copy()
-    clipped["geometry"] = clipped.geometry.apply(_to_multipolygon)
+    clipped["geometry"] = clipped.geometry.apply(to_multipolygon)
     return clipped[clipped.geometry.notna()].copy()
 
 
@@ -81,7 +70,7 @@ def ingest_watersheds(region: DownloadRegion = DEFAULT_REGION) -> int:
                     huc12=na_to_none(getattr(row, "huc12", None)),
                     name=na_to_none(getattr(row, "name", None)),
                     downstream_huc=na_to_none(getattr(row, "tohuc", None)),
-                    areasqkm=getattr(row, "areasqkm", None),
+                    areasqkm=na_to_float(getattr(row, "areasqkm", None)),
                     geom=from_shape(row.geometry, srid=WGS84),
                 )
             )

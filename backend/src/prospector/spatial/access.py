@@ -2,18 +2,13 @@
 
 "How do I reach this spot, and how hard is it?" — a core prospecting question.
 Uses the `roads` table (public TIGER + USFS forest roads/trails). Nearest-road
-search uses the KNN operator (`<->`, GIST-indexed) for the candidate ordering,
-then `ST_Distance` over `geography` for an accurate distance in meters.
+search orders by the true geodesic distance (`ST_Distance` over `geography`);
+the roads table is small (focus area), so the exact scan is fast and accurate.
 """
 
 from __future__ import annotations
 
-from sqlalchemy import text
-
-from prospector.db.base import engine
-
-# WGS84 point from bound :lon/:lat params, reused across queries.
-_PT = "ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)"
+from prospector.spatial._db import PT, query_first
 
 # Accessibility bands by distance (m) to the nearest *drivable* road.
 _BANDS: list[tuple[float, str]] = [
@@ -36,18 +31,15 @@ def nearest_road(lon: float, lat: float, *, drivable_only: bool = False) -> dict
     # operator, whose degree-based ordering can pick the wrong road when two are
     # at similar distances in different directions (lon° ≠ lat° in meters). The
     # roads table is small (focus area), so the scan+sort is exact and fast.
-    sql = text(
-        f"""
+    sql = f"""
         SELECT name, road_class, kind, category,
-               ST_Distance(geography(geom), geography({_PT})) AS meters
+               ST_Distance(geography(geom), geography({PT})) AS meters
         FROM roads
         {where}
         ORDER BY meters
         LIMIT 1
-        """  # noqa: S608 — `where` is a fixed string, not user input
-    )
-    with engine.connect() as conn:
-        row = conn.execute(sql, {"lon": lon, "lat": lat}).mappings().first()
+    """  # noqa: S608 — `where` is a fixed string, not user input
+    row = query_first(sql, {"lon": lon, "lat": lat})
     if row is None:
         return None
     return {

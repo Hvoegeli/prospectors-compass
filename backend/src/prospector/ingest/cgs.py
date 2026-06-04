@@ -20,17 +20,17 @@ from __future__ import annotations
 import logging
 
 import geopandas as gpd
-import httpx
 from geoalchemy2.shape import from_shape
-from shapely.geometry import MultiPolygon, Point
+from shapely.geometry import Point
 from sqlalchemy import delete
 
 from prospector.db.base import Base, SessionLocal, engine
 from prospector.db.models import AmlHazard, MineralPotential, MiningDistrict
+from prospector.ingest.arcgis import fetch_features
 from prospector.ingest.census import load_region_counties
 from prospector.ingest.focus_area import DEFAULT_REGION, DownloadRegion
 from prospector.ingest.storage import RAW_DIR, download_file
-from prospector.ingest.util import na_to_none
+from prospector.ingest.util import na_to_none, to_multipolygon
 
 log = logging.getLogger(__name__)
 
@@ -68,16 +68,6 @@ _AML_ZIP = RAW_DIR / "cgs" / "ON-008-04.zip"
 _AML_GDB_INNER = "ON-008-04 FINAL FILES/GIS_Data (gdb files)/USFS AMLI.gdb"
 
 
-def _to_multipolygon(geom: object) -> MultiPolygon | None:
-    if geom is None or geom.is_empty:
-        return None
-    if geom.geom_type == "MultiPolygon":
-        return geom
-    if geom.geom_type == "Polygon":
-        return MultiPolygon([geom])
-    return None
-
-
 def _county_mask(region: DownloadRegion):
     """(bbox, dissolved-union geometry) for the region's counties, in WGS84."""
     counties = load_region_counties(region)
@@ -95,7 +85,7 @@ def load_region_districts(region: DownloadRegion = DEFAULT_REGION) -> gpd.GeoDat
     gdf = gpd.read_file(f"zip://{zip_path}!{_DISTRICTS_SHP}").to_crs(epsg=WGS84)
     clipped = gpd.clip(gdf, mask, keep_geom_type=True)
     clipped = clipped[clipped.geometry.notna() & ~clipped.geometry.is_empty].copy()
-    clipped["geometry"] = clipped.geometry.apply(_to_multipolygon)
+    clipped["geometry"] = clipped.geometry.apply(to_multipolygon)
     return clipped[clipped.geometry.notna()].copy()
 
 
@@ -131,55 +121,25 @@ def ingest_districts(region: DownloadRegion = DEFAULT_REGION) -> int:
 # ----------------------------------------------------------------------------------
 # Mineral Resource Potential (ArcGIS MapServer, paginated)
 # ----------------------------------------------------------------------------------
-def _fetch_potential_features(bbox) -> list[dict]:
-    """Page through the CGS MapServer query, bbox-filtered, returning GeoJSON features."""
-    minx, miny, maxx, maxy = bbox
-    envelope = f"{minx},{miny},{maxx},{maxy}"
-    features: list[dict] = []
-    offset = 0
-    while True:
-        resp = httpx.post(
-            POTENTIAL_QUERY_URL,
-            data={
-                "geometry": envelope,
-                "geometryType": "esriGeometryEnvelope",
-                "inSR": str(WGS84),
-                "spatialRel": "esriSpatialRelIntersects",
-                "where": _POTENTIAL_WHERE,
-                "outFields": ",".join(c for c in _POTENTIAL_FIELDS if c not in ("FMT", "QUAD"))
-                + ",FMT,QUAD",
-                "outSR": str(WGS84),
-                # Stable sort is REQUIRED for resultOffset paging — without it the
-                # server may reorder rows between pages, duplicating some and
-                # skipping others (see docs/ERROR_FIX_LOG.md).
-                "orderByFields": "OBJECTID",
-                "resultOffset": str(offset),
-                "resultRecordCount": str(_POTENTIAL_PAGE),
-                "f": "geojson",
-            },
-            timeout=120,
-        )
-        resp.raise_for_status()
-        page = resp.json().get("features", [])
-        features.extend(page)
-        log.info("Mineral potential: fetched %d (offset %d)", len(features), offset)
-        if len(page) < _POTENTIAL_PAGE:
-            break
-        offset += _POTENTIAL_PAGE
-    return features
-
-
 def load_region_potential(region: DownloadRegion = DEFAULT_REGION) -> gpd.GeoDataFrame:
     """Load mineral-potential polygons clipped to ``region``'s counties (WGS84)."""
     bbox, mask = _county_mask(region)
-    features = _fetch_potential_features(bbox)
+    out_fields = ",".join(c for c in _POTENTIAL_FIELDS if c not in ("FMT", "QUAD")) + ",FMT,QUAD"
+    features = fetch_features(
+        POTENTIAL_QUERY_URL,
+        bbox,
+        out_fields=out_fields,
+        order_by="OBJECTID",
+        where=_POTENTIAL_WHERE,
+        page=_POTENTIAL_PAGE,
+    )
     if not features:
         return gpd.GeoDataFrame(columns=[*_POTENTIAL_FIELDS.values(), "geometry"], crs=WGS84)
 
     gdf = gpd.GeoDataFrame.from_features(features, crs=WGS84)
     clipped = gpd.clip(gdf, mask, keep_geom_type=True)
     clipped = clipped[clipped.geometry.notna() & ~clipped.geometry.is_empty].copy()
-    clipped["geometry"] = clipped.geometry.apply(_to_multipolygon)
+    clipped["geometry"] = clipped.geometry.apply(to_multipolygon)
     clipped = clipped[clipped.geometry.notna()].copy()
     return clipped.rename(columns=_POTENTIAL_FIELDS)
 
