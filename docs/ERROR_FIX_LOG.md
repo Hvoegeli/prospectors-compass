@@ -36,6 +36,14 @@ When an error or fix takes more than 5 minutes to diagnose, append an entry belo
 **Fix:** Pin `orderByFields=OBJECTID` on every page request (service reports `supportsPagination` + `supportsOrderBy` = true). Re-ran: identical 7,378-row output, now provably stable.
 **Prevention:** Any time you page an ArcGIS Feature/MapServer with `resultOffset`, always set `orderByFields` to a unique/stable field. Sanity-check `count(*) == count(DISTINCT geom)` after load.
 
+### 2026-06-04 — Census TIGER roads download truncated mid-stream, aborting `ingest all`
+
+**Error:** `httpx.RemoteProtocolError: peer closed connection without sending complete message body (received 262144 bytes, expected 2686851)` — `ingest all` aborted at the roads step, twice, on the same file.
+**Context:** Re-running `python -m prospector.ingest all` after expanding the focus region to more counties. The failing file was `tl_2023_08051_roads.zip` (Gunnison) from `www2.census.gov`, truncating deterministically at exactly 256 KB.
+**Root cause:** Census.gov occasionally closes a connection mid-stream. `storage.download_file` streamed once with **no retry**, so a single dropped connection aborted the whole multi-layer ingest. `curl --retry` fetched the full 2,686,851-byte valid zip on a later attempt — confirming the file/server were fine and the issue was a transient connection drop the client didn't recover from.
+**Fix:** Added retry-with-backoff to `storage.download_file` (mirrors the ArcGIS fetcher): catch `httpx.TransportError` (incl. `RemoteProtocolError`) + 5xx, retry up to 4× with linear backoff; 4xx not retried; still atomic via `.part` + rename. Hand-cached the one file via curl to unblock immediately.
+**Prevention:** Any streaming download of large public files (TIGER, 3DEP DEM) must retry transient drops — a single flake shouldn't abort a long ingest. The ArcGIS ingester already had this; the file downloader was the gap.
+
 ## Common Issues to Watch For
 
 ### LangGraph
