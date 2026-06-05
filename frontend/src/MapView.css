@@ -400,6 +400,10 @@
   background: #fbbf24;
 }
 
+.help .k.red {
+  background: #ef4444;
+}
+
 .help-close {
   position: absolute;
   top: 10px;

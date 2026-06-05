@@ -32,6 +32,7 @@ LAYERS: dict[str, str] = {
     "districts": "mining_districts",
     "potential": "mineral_potential",
     "aml": "aml_hazards",
+    "claims": "mining_claims",
 }
 
 #: Layers backed by a shared table, distinguished by a fixed category filter.

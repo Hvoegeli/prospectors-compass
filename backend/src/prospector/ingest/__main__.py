@@ -18,6 +18,7 @@ import logging
 import os
 from datetime import datetime, timezone
 
+from prospector.ingest.blm_claims import ingest_claims
 from prospector.ingest.census import ingest_counties
 from prospector.ingest.cgs import ingest_aml, ingest_districts, ingest_potential
 from prospector.ingest.focus_area import DEFAULT_REGION
@@ -117,6 +118,13 @@ def _run_watershed() -> None:
     print(f"✓ Loaded {count} subwatersheds into PostGIS table 'watersheds'.")
 
 
+def _run_claims() -> None:
+    region = DEFAULT_REGION
+    print(f"Ingesting BLM active mining claims for: {region.name}")
+    count = ingest_claims(region)
+    print(f"✓ Loaded {count} active mining claims into PostGIS table 'mining_claims'.")
+
+
 def _run_basemap() -> None:
     region = DEFAULT_REGION
     print(f"Building hillshade basemap (DEM → MBTiles) for: {region.name}")
@@ -139,6 +147,7 @@ def _run_all() -> None:
     _run_potential()
     _run_aml()
     _run_watershed()
+    _run_claims()
 
 
 def _run_refresh() -> None:
@@ -178,6 +187,7 @@ def main() -> None:
     sub.add_parser("potential", help="Download + load CGS mineral-resource potential")
     sub.add_parser("aml", help="Download + load CGS abandoned-mine-land hazards")
     sub.add_parser("watershed", help="Download + load USGS WBD HUC12 subwatersheds")
+    sub.add_parser("claims", help="Download + load BLM active mining claims")
     sub.add_parser("all", help="Run every ingestion step in order")
     sub.add_parser("refresh", help="Force fresh re-download + re-ingest of every source")
     sub.add_parser("basemap", help="Build the hillshade basemap MBTiles (DEM via GDAL/Docker)")
@@ -208,6 +218,8 @@ def main() -> None:
         _run_aml()
     elif args.command == "watershed":
         _run_watershed()
+    elif args.command == "claims":
+        _run_claims()
     elif args.command == "all":
         _run_all()
     elif args.command == "refresh":

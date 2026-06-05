@@ -40,6 +40,7 @@ const LAYERS: LayerInfo[] = [
   { id: 'ownership', label: 'Land ownership', group: 'overlay' },
   { id: 'potential', label: 'Mineral potential (CGS)', group: 'finds' },
   { id: 'districts', label: 'Historic mining districts', group: 'finds' },
+  { id: 'claims', label: 'Active mining claims (BLM)', group: 'overlay' },
   { id: 'forests', label: 'National forest boundaries', group: 'overlay' },
   { id: 'counties', label: 'County boundaries', group: 'overlay' },
   { id: 'roads', label: 'Roads (public + USFS)', group: 'overlay' },
@@ -270,6 +271,19 @@ function layerSpec(id: string): LayerSpecification {
           'fill-outline-color': '#b45309',
         },
       }
+    case 'claims':
+      // Red = "already staked" — a warning hue, kept low-opacity with a strong
+      // outline so the underlying terrain/potential still reads through.
+      return {
+        id,
+        source,
+        type: 'fill',
+        paint: {
+          'fill-color': '#ef4444',
+          'fill-opacity': 0.16,
+          'fill-outline-color': '#b91c1c',
+        },
+      }
     case 'forests':
       return {
         id,
@@ -407,6 +421,12 @@ const PROP_LABELS: Record<string, string> = {
   fluorite: 'Fluorite Potential',
   formation: 'Formation',
   quad: 'Quadrangle',
+  serial_nr: 'Claim Serial #',
+  claim_name: 'Claim Name',
+  claim_type: 'Claim Type',
+  case_group: 'Case Group',
+  case_disp: 'Disposition',
+  acres: 'Acres',
 }
 
 function prettyLabel(key: string): string {
@@ -442,8 +462,8 @@ type Facets = { commodities: string[]; deposit_types: string[] }
 
 // Heavy layers load by viewport (bbox). MRDS skips bbox when commodity-filtered
 // (a filter is meant to find a target everywhere, not just on-screen).
-const BBOX_LAYERS = new Set(['mrds', 'usmin', 'potential', 'aml'])
-const PAN_LAYERS = ['usmin', 'potential', 'aml'] // mrds is handled separately
+const BBOX_LAYERS = new Set(['mrds', 'usmin', 'potential', 'aml', 'claims'])
+const PAN_LAYERS = ['usmin', 'potential', 'aml', 'claims'] // mrds is handled separately
 
 function bboxParam(map: maplibregl.Map): string {
   const b = map.getBounds()
@@ -639,6 +659,7 @@ export default function MapView() {
 
     map.on('load', async () => {
       let loaded = 0
+      const failed: string[] = []
       let countiesData: GeoJSON.FeatureCollection | null = null
       for (const { id } of LAYERS) {
         try {
@@ -651,8 +672,11 @@ export default function MapView() {
           map.addLayer(layerSpec(id))
           loaded += data.features.length
         } catch (err) {
-          setStatus(`Failed to load "${id}": ${String(err)} — is the API on ${API_BASE}?`)
-          return
+          // One layer failing (e.g. a source not yet ingested) shouldn't blank
+          // the whole map — skip it, note it, and keep loading the rest.
+          console.error(`layer "${id}" failed to load`, err)
+          failed.push(id)
+          continue
         }
       }
       // Pin the view to the mapped area — can't pan or zoom out past it. Derived
@@ -668,7 +692,10 @@ export default function MapView() {
         map.setMaxBounds(bounds)
         map.fitBounds(bounds, { animate: false, padding: 8 })
       }
-      setStatus(`${loaded.toLocaleString()} features loaded`)
+      const note = failed.length
+        ? ` — ${failed.length} layer(s) unavailable (${failed.join(', ')}); is the API on ${API_BASE}?`
+        : ''
+      setStatus(`${loaded.toLocaleString()} features loaded${note}`)
       setReady(true)
     })
 
@@ -678,10 +705,13 @@ export default function MapView() {
         [e.point.x - b, e.point.y - b],
         [e.point.x + b, e.point.y + b],
       ]
-      const feats = map.queryRenderedFeatures(box, { layers: LAYERS.map((l) => l.id) })
+      // Only query layers that actually loaded — a layer can be absent if its
+      // source failed to load (see the resilient load loop above).
+      const present = LAYERS.map((l) => l.id).filter((id) => map.getLayer(id))
+      const feats = map.queryRenderedFeatures(box, { layers: present })
       if (!feats.length) return
       const order = [
-        'mrds', 'usmin', 'aml', 'districts', 'potential',
+        'mrds', 'usmin', 'aml', 'districts', 'claims', 'potential',
         'roads', 'trails', 'geology', 'ownership', 'forests', 'counties',
       ]
       const picked = order
@@ -857,10 +887,10 @@ export default function MapView() {
       {/* Click-away backdrop for any open bar menu */}
       {openMenu && <div className="backdrop" onClick={() => setOpenMenu(null)} />}
 
-      {/* Persistent land-status disclaimer whenever ownership is shown */}
-      {visible.ownership && (
+      {/* Persistent land-status disclaimer whenever ownership or claims is shown */}
+      {(visible.ownership || visible.claims) && (
         <div className="disclaimer-chip">
-          ⚠ Land status is informational only — verify with the managing agency before digging.
+          ⚠ Land status &amp; claims are informational only — verify with the managing agency before digging.
         </div>
       )}
 
@@ -894,6 +924,14 @@ export default function MapView() {
             <b>Hazards</b>
             <span><i style={{ background: '#f97316' }} />danger</span>
             <span><i style={{ background: '#b91c1c' }} />extreme</span>
+          </div>
+        )}
+        {visible.claims && (
+          <div className="legend-row">
+            <b>Claims</b>
+            <span title="Ground a third party currently holds an active mining claim on">
+              <i style={{ background: '#ef4444' }} />active (staked)
+            </span>
           </div>
         )}
       </div>
@@ -931,6 +969,7 @@ export default function MapView() {
             <ul>
               <li><b>Geologic map</b> — bedrock colored by rock type.</li>
               <li><b>Land ownership</b> — colored by access-relevance (who manages it). See the disclaimer below.</li>
+              <li><b>Active mining claims (BLM)</b> — <span className="k red" />ground a third party has currently staked for mineral rights. Tells you which public land is already spoken for, so you don&rsquo;t prospect a claim that isn&rsquo;t yours. Boundaries are PLSS-approximate — verify via the BLM MLRS link.</li>
               <li><b>National forests / counties</b> — boundary context.</li>
               <li><b>Roads / trails</b> — public + USFS; primary roads are thicker.</li>
               <li><b>Mine hazards (AML)</b> — abandoned-mine hazards (orange → red by severity). Stay clear.</li>

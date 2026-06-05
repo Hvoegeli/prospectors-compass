@@ -303,6 +303,44 @@ class AmlHazard(Base):
     )
 
 
+class MiningClaim(Base):
+    """An active BLM mining-claim polygon, clipped to the focus area.
+
+    Source: BLM Mineral & Land Records System (MLRS) "Active Mining Claims",
+    served from the BLM ArcGIS MapServer (gis.blm.gov/nlsdb), layer 1. Each
+    polygon is a claim case geocoded from its Public Land Survey System (PLSS)
+    legal description — ground a third party currently holds mineral rights to on
+    public land. We ingest only the ACTIVE layer: it answers "is this ground
+    already claimed?", so a prospector avoids trespassing on or duplicating an
+    existing claim. Realizes the active-claims layer the PRD deferred to a portal
+    link.
+
+    NOTE: PLSS-derived geometry is approximate. This is informational only — like
+    land ownership, claim ANSWERS must always carry the disclaimer and never make
+    a go/no-go determination. Coverage layer; re-ingest scoped by `state_fips`.
+    """
+
+    __tablename__ = "mining_claims"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    state_fips: Mapped[str] = mapped_column(String(2), nullable=False, index=True)
+    #: BLM case serial number, e.g. "COC0123456" — the claim's identifier (CSE_NR).
+    serial_nr: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    #: Geographic / claim name where present (CSE_NAME).
+    claim_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    #: BLM product, e.g. "Placer Mining Claim", "Lode Mining Claim", "Mill Site" (BLM_PROD).
+    claim_type: Mapped[str | None] = mapped_column(String, nullable=True)
+    #: Record type / case group (REC_TYPE_CSE_GRP).
+    case_group: Mapped[str | None] = mapped_column(String, nullable=True)
+    #: Case disposition (CSE_DISP) — active for this layer.
+    case_disp: Mapped[str | None] = mapped_column(String, nullable=True)
+    #: Case acreage (RCRD_ACRS).
+    acres: Mapped[float | None] = mapped_column(Float, nullable=True)
+    geom: Mapped[object] = mapped_column(
+        Geometry(geometry_type="MULTIPOLYGON", srid=WGS84, spatial_index=True)
+    )
+
+
 class Watershed(Base):
     """A HUC12 subwatershed polygon (USGS Watershed Boundary Dataset), clipped
     to the focus area.
