@@ -57,9 +57,13 @@ def mrds_facets() -> dict[str, list[str]]:
         "unnest(string_to_array(concat_ws(', ', t.commod1, t.commod2, t.commod3), ', ')) AS tok "
         "WHERE tok <> '' ORDER BY tok"
     )
+    # Dedupe case-insensitively — MRDS stores the same type in mixed casing
+    # ("Vein"/"VEIN", "Pegmatite"/"PEGMATITE"), which look like duplicates once
+    # the UI title-cases them. Return the lower-cased form; the filter below
+    # matches case-insensitively so the selection still works.
     dep_sql = text(
-        "SELECT DISTINCT dep_type FROM mrds_sites "
-        "WHERE dep_type IS NOT NULL AND dep_type <> '' ORDER BY dep_type"
+        "SELECT DISTINCT lower(dep_type) AS dt FROM mrds_sites "
+        "WHERE dep_type IS NOT NULL AND dep_type <> '' ORDER BY dt"
     )
     with engine.connect() as conn:
         commodities = [r[0] for r in conn.execute(commod_sql)]
@@ -103,7 +107,7 @@ def get_layer(
             conditions.append(f":commodity = ANY({_COMMOD_TOKENS})")
             params["commodity"] = commodity
         if dep_type:
-            conditions.append("t.dep_type = :dep_type")
+            conditions.append("lower(t.dep_type) = lower(:dep_type)")
             params["dep_type"] = dep_type
 
     where = f"WHERE {' AND '.join(conditions)}" if conditions else ""

@@ -551,7 +551,156 @@ function amlFilter(s: Record<Closure, boolean>): maplibregl.FilterSpecification 
   return ['in', ['get', 'closure'], ['literal', allowed]] as maplibregl.FilterSpecification
 }
 
-type OpenMenu = 'looking' | 'finds' | 'land' | 'access' | 'app' | null
+// --- Field guide: a non-AI, deterministic beginner's prospecting reference ----
+// (project scope calls for a "non-AI field guide / dichotomous key"). Pure static
+// text — no network, no model — rendered as a collapsible top-bar menu.
+type GuideEntry = { id: string; title: string; body: string[] }
+type GuideCategory = { name: string; entries: GuideEntry[] }
+const FIELD_GUIDE: GuideCategory[] = [
+  {
+    name: 'Targets — what to look for & where',
+    entries: [
+      {
+        id: 'placer',
+        title: '🪙 Placer gold (creeks, streams & rivers)',
+        body: [
+          'Gold is about 19× heavier than water, so moving water drops it the instant the current slows — hunt the slow spots.',
+          'Best traps: the inside of bends, behind and downstream of boulders, in bedrock cracks and crevices, at the base of waterfalls and rapids, and where a steep creek flattens out.',
+          'Dig down to bedrock (or a packed clay "false bedrock") — gold works its way to the bottom of the gravel.',
+          'Black sand (magnetite) piling up in your pan means you are in a gold-catching zone; gold rides with it.',
+          'Work downstream of known lode sources and historic districts — gold does not travel far from where it eroded out.',
+        ],
+      },
+      {
+        id: 'lode',
+        title: '⛏️ Lode gold (hard rock)',
+        body: [
+          'The original source: gold in quartz veins along faults and fractures, often with rusty iron staining ("gossan") and sulfides like pyrite.',
+          'Trace placer gold upstream to find the lode that shed it.',
+          'Look in and near historic districts (the Mining districts layer) where veins cut favorable rock.',
+        ],
+      },
+      {
+        id: 'silver',
+        title: '🪙 Silver',
+        body: [
+          'Usually in hydrothermal veins with lead and zinc — watch for galena (heavy, bright lead-gray cubes) and sphalerite.',
+          'Common around old volcanic centers (epithermal deposits); Colorado has famous silver camps like Leadville and Aspen.',
+          'Often a by-product of lead / zinc / copper ground — check polymetallic past-producers.',
+        ],
+      },
+      {
+        id: 'platinum',
+        title: '⚪ Platinum (PGE)',
+        body: [
+          'Tied to dark, iron- and magnesium-rich (mafic / ultramafic) intrusions and their placers; it travels with chromite and olivine.',
+          'Rare in Colorado — more "know it when the geology is right" than a primary local target. Do not chase it here without a strong reason.',
+        ],
+      },
+      {
+        id: 'gems',
+        title: '💎 Gemstones in their host rock',
+        body: [
+          'Pegmatites (very coarse granite — you can see individual crystals) are the prime host for aquamarine / beryl, topaz, tourmaline, smoky quartz, and garnet.',
+          'Look for pockets and vugs, and weathered "rotten" pegmatite where crystals wash loose (Mt. Antero, Crystal Peak).',
+          'Corundum (ruby and sapphire) forms in metamorphic rock — marble, gneiss, schist.',
+          'Cavities, vugs, and contact zones (where an intrusion meets the country rock) concentrate crystals. Check the Mineral potential layer for pegmatite / corundum favorability.',
+        ],
+      },
+      {
+        id: 'copper',
+        title: '🟢 Copper & malachite',
+        body: [
+          'The tell is color: bright green (malachite) and blue (azurite) stains are copper carbonates — weathering products that flag copper sulfides below.',
+          'Look for gossans (rusty caps) and green-stained fractures in outcrops, roadcuts, and old mine dumps.',
+          'Copper turns up in vein, porphyry, and sediment-hosted systems; green staining is your quick visual cue.',
+        ],
+      },
+    ],
+  },
+  {
+    name: 'Skills',
+    entries: [
+      {
+        id: 'panning',
+        title: '🥄 Panning & basic gear',
+        body: [
+          'Starter kit: a gold pan, a classifier (sieve), a snuffer bottle, and a small vial. A plastic pan with riffles is fine to learn on.',
+          'Technique: fill the pan with gravel, submerge it, break up any clay, shake side-to-side to settle the heavies, then tip and swirl to wash the light material off the top — a little at a time. Gold stays at the back and bottom.',
+          'Classify first (screen out the big rocks) so you are panning the fine material where the gold is.',
+          'Check what is legal to use: a pan and hand sluice are usually fine; motorized dredging is often restricted or needs a permit — verify before you go.',
+        ],
+      },
+      {
+        id: 'identify',
+        title: '🔍 Identify your find (field tests)',
+        body: [
+          'Heft — real gold feels surprisingly heavy for its size.',
+          'Hardness — a scratch test sorts look-alikes (a steel knife is about 5.5 on the Mohs hardness scale).',
+          'Streak — rub it on unglazed porcelain: gold leaves a gold streak; pyrite ("fool\'s gold") leaves a greenish-black streak.',
+          'Magnetism — a magnet pulls magnetite (black sand) but not gold.',
+          'The classic call: gold is heavy, soft, and malleable (it dents, it will not shatter) with no streak; pyrite is brittle and shatters; mica is light and flakes or floats.',
+          'If you cannot confidently identify it, treat it as unknown and run more tests — do not guess.',
+        ],
+      },
+      {
+        id: 'reading-map',
+        title: '🗺️ Reading this map (combine the layers)',
+        body: [
+          'A good prospect is where several signals stack up: high Mineral potential for your target, a known mine nearby, a drainage below a lode, open land (BLM / USFS), and a road or trail to reach it.',
+          'Start from a historic district or a high-potential unit, then follow the water downhill for placer, or the vein / contact for lode.',
+          'Always check Land ownership and Active claims before planning a trip, and note nearby Mine hazards.',
+        ],
+      },
+    ],
+  },
+  {
+    name: 'Stay safe & legal',
+    entries: [
+      {
+        id: 'safety',
+        title: '⚠️ Safety',
+        body: [
+          'Never enter an abandoned mine — adits and shafts collapse, flood, and hold bad air. The Mine hazards (AML) layer shows them; stay out and clear of the openings.',
+          'Backcountry basics: tell someone your route and return time, carry water and layers, watch the weather (afternoon storms, flash floods in drainages), and expect no cell service.',
+          'Old workings have unstable dumps, hidden openings, and rotten timber — watch your footing.',
+        ],
+      },
+      {
+        id: 'legal',
+        title: '📜 Legal & etiquette',
+        body: [
+          'Rockhounding vs. claiming: casual collecting for personal use is generally allowed on much BLM and Forest Service land, but rules differ by area and forest — check first.',
+          'Respect active claims: the Active claims layer shows ground others legally control; do not prospect or collect there.',
+          'Fill your holes and pack out trash — leave no trace; reclamation is not optional on public land.',
+          'No collecting in National Parks, Wilderness, and most state parks and wildlife areas. When in doubt, ask the managing agency — land status here is informational, so verify it.',
+        ],
+      },
+    ],
+  },
+  {
+    name: 'Reference',
+    entries: [
+      {
+        id: 'glossary',
+        title: '📒 Glossary',
+        body: [
+          'Placer — mineral (especially gold) concentrated in stream and river gravels by water.',
+          'Lode — mineral still in its source rock, e.g. a quartz vein; "hard rock."',
+          'Pay streak — the concentrated line of gold within a deposit.',
+          'Gossan — a rusty, iron-stained weathered cap over a sulfide body; a pathfinder.',
+          'Float — loose pieces of ore eroded from a source; trace it uphill to find it.',
+          'Bench / terrace — old, elevated river gravels stranded above the current channel.',
+          'Adit / shaft / winze — horizontal / vertical / internal mine openings (all hazards).',
+          'Tailings — leftover processed waste rock from past mining.',
+          'Gangue — the worthless minerals surrounding the valuable ones.',
+        ],
+      },
+    ],
+  },
+]
+
+type OpenMenu = 'looking' | 'finds' | 'land' | 'access' | 'guide' | 'app' | null
 
 export default function MapView() {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -568,6 +717,7 @@ export default function MapView() {
   const [openMenu, setOpenMenu] = useState<OpenMenu>(null)
   const [helpOpen, setHelpOpen] = useState(false)
   const [gemOpen, setGemOpen] = useState(false)
+  const [openGuide, setOpenGuide] = useState<string | null>(null) // expanded field-guide entry
   const [amlStatus, setAmlStatus] = useState<Record<Closure, boolean>>({
     collapsed: true,
     closed: true,
@@ -669,6 +819,10 @@ export default function MapView() {
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return
+    // React StrictMode (dev) mounts → unmounts → remounts. Without this flag the
+    // first map's async load loop keeps running after its map is removed, throwing
+    // on the leftover layers and reporting phantom "N layers unavailable".
+    let cancelled = false
     const map = new maplibregl.Map({
       container: containerRef.current,
       style: BASE_STYLE,
@@ -687,6 +841,7 @@ export default function MapView() {
           const res = await fetch(layerUrl(id, map))
           if (!res.ok) throw new Error(`${res.status}`)
           const data = (await res.json()) as GeoJSON.FeatureCollection
+          if (cancelled) return // map was torn down mid-load (StrictMode/unmount)
           if (id === 'counties') countiesData = data
           const srcData = id === 'aml' ? tagClosure(data) : data
           map.addSource(`${id}-src`, { type: 'geojson', data: srcData })
@@ -718,6 +873,7 @@ export default function MapView() {
         // in the unavailable-layers status note below).
         console.warn('counties layer unavailable — map view not bounded (zoom-lock off)')
       }
+      if (cancelled) return // don't report status for a torn-down map
       const note = failed.length
         ? ` — ${failed.length} layer(s) unavailable (${failed.join(', ')}); is the API on ${API_BASE}?`
         : ''
@@ -751,6 +907,7 @@ export default function MapView() {
     })
 
     return () => {
+      cancelled = true
       map.remove()
       mapRef.current = null
     }
@@ -921,6 +1078,44 @@ export default function MapView() {
         </div>
 
         <span className="status-mini" title={status}>{status}</span>
+
+        {/* 5 — Field guide: non-AI beginner prospecting advice (reference zone) */}
+        <div className="bar-item">
+          <button className="bar-btn" onClick={() => toggleMenu('guide')}>
+            📖 Field guide ▾
+          </button>
+          {openMenu === 'guide' && (
+            <div className="dropdown guide">
+              {FIELD_GUIDE.map((cat) => (
+                <div key={cat.name} className="guide-cat">
+                  <div className="guide-cat-label">{cat.name}</div>
+                  {cat.entries.map((entry) => (
+                    <div key={entry.id} className="guide-entry">
+                      <button
+                        className="guide-head"
+                        onClick={() => setOpenGuide((g) => (g === entry.id ? null : entry.id))}
+                      >
+                        <span>{entry.title}</span>
+                        <span className="guide-caret">{openGuide === entry.id ? '▴' : '▾'}</span>
+                      </button>
+                      {openGuide === entry.id && (
+                        <ul className="guide-body">
+                          {entry.body.map((line) => (
+                            <li key={line}>{line}</li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ))}
+              <p className="guide-foot">
+                A non-AI field guide — general advice. Always verify land status, active claims, and
+                local rules before you dig.
+              </p>
+            </div>
+          )}
+        </div>
 
         <button
           className="bar-btn bar-gear"
