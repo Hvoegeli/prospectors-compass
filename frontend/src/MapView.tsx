@@ -516,6 +516,12 @@ function layerUrl(id: string, map: maplibregl.Map | null, commodity = '', depTyp
 
 const EMPTY_FC: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] }
 
+// Drop out-of-order async responses: bump a per-source counter before each fetch
+// and ignore any response whose counter is no longer the latest for that source.
+function nextReq(seqs: Record<string, number>, id: string): number {
+  return (seqs[id] = (seqs[id] ?? 0) + 1)
+}
+
 // AML mine openings have no structured open/closed field — derive one from the
 // opening type + free-text comments so hazards can be filtered by closure status.
 type Closure = 'collapsed' | 'closed' | 'unknown'
@@ -550,6 +556,7 @@ type OpenMenu = 'looking' | 'finds' | 'land' | 'access' | 'app' | null
 export default function MapView() {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
+  const reqSeq = useRef<Record<string, number>>({}) // per-source request counter (race guard)
   const [visible, setVisible] = useState<Record<string, boolean>>(
     Object.fromEntries(LAYERS.map((l) => [l.id, true])),
   )
@@ -598,14 +605,17 @@ export default function MapView() {
     const src = map.getSource('mrds-src') as maplibregl.GeoJSONSource | undefined
     if (!src) return
     if (!isAny && commodity === null) {
+      nextReq(reqSeq.current, 'mrds') // invalidate any in-flight mrds fetch
       src.setData(EMPTY_FC) // a target with no catalogued mines (e.g. rare earths)
       // Defer (not a synchronous setState in the effect body) to avoid cascading renders.
       queueMicrotask(() => setStatus('No catalogued mines for this target'))
       return
     }
+    const seq = nextReq(reqSeq.current, 'mrds')
     fetch(layerUrl('mrds', map, commodity ?? '', depType))
       .then((r) => r.json())
       .then((data: GeoJSON.FeatureCollection) => {
+        if (reqSeq.current.mrds !== seq) return // a newer target/filter change won the race
         src.setData(data)
         const filtered = commodity || depType ? ' (filtered)' : ''
         setStatus(`MRDS: ${data.features.length.toLocaleString()} sites${filtered}`)
@@ -629,9 +639,16 @@ export default function MapView() {
         for (const id of ids) {
           const src = map.getSource(`${id}-src`) as maplibregl.GeoJSONSource | undefined
           if (!src) continue
+          // Don't refetch a hidden viewport layer (toggle() refreshes it on
+          // turn-on). mrds is exempt — it's the primary layer, kept fresh here.
+          if (id !== 'mrds' && map.getLayoutProperty(id, 'visibility') === 'none') continue
+          const seq = nextReq(reqSeq.current, id)
           fetch(layerUrl(id, map, id === 'mrds' ? commodity ?? '' : '', id === 'mrds' ? depType : ''))
             .then((r) => r.json())
-            .then((data: GeoJSON.FeatureCollection) => src.setData(id === 'aml' ? tagClosure(data) : data))
+            .then((data: GeoJSON.FeatureCollection) => {
+              if (reqSeq.current[id] !== seq) return // a newer pan won the race
+              src.setData(id === 'aml' ? tagClosure(data) : data)
+            })
             .catch((err) => console.error(`reload of "${id}" failed`, err))
         }
       }, 300)
@@ -695,6 +712,11 @@ export default function MapView() {
         ]
         map.setMaxBounds(bounds)
         map.fitBounds(bounds, { animate: false, padding: 8 })
+      } else {
+        // Zoom-lock is derived from the counties extent; without it the view
+        // can't be bounded. Warn rather than fail silently (counties also shows
+        // in the unavailable-layers status note below).
+        console.warn('counties layer unavailable — map view not bounded (zoom-lock off)')
       }
       const note = failed.length
         ? ` — ${failed.length} layer(s) unavailable (${failed.join(', ')}); is the API on ${API_BASE}?`
@@ -740,6 +762,20 @@ export default function MapView() {
     const next = !visible[id]
     map.setLayoutProperty(id, 'visibility', next ? 'visible' : 'none')
     setVisible((v) => ({ ...v, [id]: next }))
+    // The pan handler skips hidden viewport layers, so when one is turned back
+    // on, refresh it for the current view (mrds is driven by the target effect).
+    if (next && id !== 'mrds' && BBOX_LAYERS.has(id)) {
+      const src = map.getSource(`${id}-src`) as maplibregl.GeoJSONSource | undefined
+      if (src) {
+        const seq = nextReq(reqSeq.current, id)
+        fetch(layerUrl(id, map))
+          .then((r) => r.json())
+          .then((data: GeoJSON.FeatureCollection) => {
+            if (reqSeq.current[id] === seq) src.setData(id === 'aml' ? tagClosure(data) : data)
+          })
+          .catch((err) => console.error(`refresh of "${id}" failed`, err))
+      }
+    }
   }
 
   function toggleMenu(name: Exclude<OpenMenu, null>) {
