@@ -8,53 +8,188 @@
   inset: 0;
 }
 
-.panel {
+/* --- Fixed top bar --------------------------------------------------------- */
+.topbar {
   position: absolute;
-  top: 12px;
-  left: 12px;
-  z-index: 1;
-  width: 240px;
-  padding: 14px 16px;
-  background: rgba(15, 23, 42, 0.9);
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 48px;
+  padding: 0 12px;
+  background: rgba(15, 23, 42, 0.94);
+  border-bottom: 1px solid #334155;
   color: #e2e8f0;
-  border: 1px solid #334155;
-  border-radius: 8px;
   font: 14px/1.4 system-ui, sans-serif;
 }
 
-.panel h3 {
-  margin: 0 0 4px;
+.brand {
+  font-weight: 600;
   font-size: 15px;
+  white-space: nowrap;
+  margin-right: 6px;
 }
 
-.panel .status {
-  margin: 0 0 10px;
+.bar-item {
+  position: relative;
+}
+
+.bar-btn {
+  background: transparent;
+  color: #e2e8f0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.bar-btn:hover {
+  background: #1e293b;
+}
+
+.status-mini {
+  flex: 1;
+  min-width: 0;
+  text-align: right;
   font-size: 12px;
   color: #94a3b8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.target {
-  margin: 0 0 12px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid #334155;
+/* Gear icon with a small ? badge */
+.bar-gear {
+  position: relative;
+  font-size: 18px;
+  line-height: 1;
+  padding: 5px 8px;
 }
 
-.target-title {
-  display: block;
+.bar-gear .qmark {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 13px;
+  height: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: #0f172a;
+  background: #fbbf24;
+  border-radius: 50%;
+}
+
+/* Push MapLibre's top-right zoom control below the bar. */
+.maplibregl-ctrl-top-right {
+  top: 56px;
+}
+
+/* --- Dropdowns (Overlays / Finds) ----------------------------------------- */
+.dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 6;
+  width: 244px;
+  max-height: 72vh;
+  overflow-y: auto;
+  padding: 12px 14px;
+  background: rgba(15, 23, 42, 0.97);
+  border: 1px solid #334155;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.dropdown.wide {
+  width: 288px;
+}
+
+/* Click-away layer for any open bar menu. */
+.backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+}
+
+/* --- Left ☰ menu (now anchored under the gear, top-right) ------------------ */
+.app-menu {
+  position: absolute;
+  top: 52px;
+  right: 12px;
+  z-index: 6;
+  width: 224px;
+  padding: 6px;
+  background: rgba(15, 23, 42, 0.97);
+  border: 1px solid #334155;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: transparent;
+  border: none;
+  color: #e2e8f0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  font: 13px system-ui, sans-serif;
+  text-align: left;
+  cursor: pointer;
+}
+
+.menu-item:hover:not(:disabled) {
+  background: #1e293b;
+}
+
+.menu-item:disabled {
+  color: #64748b;
+  cursor: default;
+}
+
+.menu-item .soon {
+  margin-left: auto;
+  font-size: 10px;
+  text-transform: uppercase;
+  color: #64748b;
+  border: 1px solid #334155;
+  border-radius: 4px;
+  padding: 1px 4px;
+}
+
+.menu-sep {
+  height: 1px;
+  background: #334155;
+  margin: 6px 4px;
+}
+
+/* --- Fields, toggles, target picker --------------------------------------- */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.field-label {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: #94a3b8;
-  margin-bottom: 6px;
 }
 
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  font-size: 12px;
-  color: #94a3b8;
-  margin-bottom: 6px;
+.field-label.section {
+  display: block;
+  margin: 10px 0 4px;
 }
 
 .field select {
@@ -62,23 +197,28 @@
   color: #e2e8f0;
   border: 1px solid #334155;
   border-radius: 4px;
-  padding: 4px 6px;
+  padding: 5px 6px;
   font-size: 13px;
 }
 
-.group {
-  margin-bottom: 12px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid #334155;
+.field.advanced {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #334155;
 }
 
-.group-title {
-  display: block;
+.layer-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+  cursor: pointer;
+}
+
+.note {
+  margin: 0 0 8px;
   font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: #94a3b8;
-  margin-bottom: 6px;
+  color: #fbbf24;
 }
 
 .claims-link {
@@ -93,40 +233,189 @@
   text-decoration: underline;
 }
 
-.layer-toggle {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 3px 0;
+/* --- Associated-gems card -------------------------------------------------- */
+.gem-card {
+  margin: 0 0 8px;
+}
+
+.gem-toggle {
+  width: 100%;
+  text-align: left;
+  background: #1e293b;
+  color: #fde68a;
+  border: 1px solid #4b5563;
+  border-radius: 6px;
+  padding: 6px 8px;
+  font: 12px system-ui, sans-serif;
   cursor: pointer;
 }
 
-.legend {
-  display: flex;
-  gap: 14px;
-  margin-top: 8px;
+.gem-toggle:hover {
+  background: #273449;
+}
+
+.gem-body {
+  padding: 6px 2px 0;
+}
+
+.gem-host {
+  margin: 4px 0 6px;
   font-size: 11px;
   color: #cbd5e1;
 }
 
-.legend .dot {
+.gem-body ul {
+  margin: 0;
+  padding-left: 16px;
+}
+
+.gem-body li {
+  font-size: 12px;
+  color: #e2e8f0;
+  margin-bottom: 3px;
+}
+
+/* --- Disclaimer chip (bottom-right) --------------------------------------- */
+.disclaimer-chip {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  z-index: 3;
+  max-width: 280px;
+  padding: 8px 10px;
+  background: rgba(15, 23, 42, 0.92);
+  border: 1px solid #b45309;
+  border-radius: 8px;
+  font: 11px/1.4 system-ui, sans-serif;
+  color: #fbbf24;
+}
+
+/* --- Legend (bottom-left) -------------------------------------------------- */
+.legend-box {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  background: rgba(15, 23, 42, 0.88);
+  border: 1px solid #334155;
+  border-radius: 8px;
+  font: 11px system-ui, sans-serif;
+  color: #cbd5e1;
+  max-width: 48vw;
+}
+
+.legend-box:empty {
+  display: none;
+}
+
+.legend-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.legend-row b {
+  color: #94a3b8;
+  font-weight: 600;
+  min-width: 52px;
+}
+
+.legend-row span {
+  display: inline-flex;
+  align-items: center;
+}
+
+.legend-row i {
   display: inline-block;
   width: 9px;
   height: 9px;
   border-radius: 50%;
   margin-right: 4px;
+}
+
+/* --- Help / user manual modal --------------------------------------------- */
+.modal-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.help {
+  position: relative;
+  max-width: 560px;
+  max-height: 80vh;
+  overflow-y: auto;
+  margin: 16px;
+  padding: 20px 24px;
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 10px;
+  color: #e2e8f0;
+  font: 14px/1.5 system-ui, sans-serif;
+}
+
+.help h2 {
+  margin: 0 0 8px;
+  font-size: 18px;
+}
+
+.help h3 {
+  margin: 16px 0 4px;
+  font-size: 14px;
+  color: #93c5fd;
+}
+
+.help ul {
+  margin: 4px 0;
+  padding-left: 18px;
+}
+
+.help li {
+  margin-bottom: 4px;
+}
+
+.help .k {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  margin: 0 3px;
   vertical-align: middle;
 }
 
-.disclaimer {
-  margin: 12px 0 0;
-  padding-top: 10px;
-  border-top: 1px solid #334155;
-  font-size: 11px;
-  color: #fbbf24;
+.help .k.cyan {
+  background: #22d3ee;
 }
 
-/* Make the popup close (X) button obvious and easy to hit. */
+.help .k.amber {
+  background: #fbbf24;
+}
+
+.help-close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  font-size: 22px;
+  cursor: pointer;
+}
+
+.help-close:hover {
+  color: #e2e8f0;
+}
+
+/* --- Feature popups (unchanged) ------------------------------------------- */
 .maplibregl-popup-close-button {
   width: 24px;
   height: 24px;
@@ -141,14 +430,10 @@
   color: #0f172a;
 }
 
-/* Room so the X never overlaps the content. */
 .maplibregl-popup-content {
   padding-right: 24px;
 }
 
-/* Tall multi-layer popups scroll internally instead of running off-screen. The
-   X button lives on the parent (.maplibregl-popup-content), so it stays pinned
-   while this inner container scrolls. */
 .popup {
   max-height: 60vh;
   overflow-y: auto;
@@ -170,8 +455,6 @@
   white-space: nowrap;
 }
 
-/* Value cell: wrap long text and break long unbroken tokens (URLs) so nothing
-   spills outside the popup box. */
 .popup td:last-child {
   overflow-wrap: anywhere;
   word-break: break-word;
