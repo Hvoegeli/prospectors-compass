@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from prospector.api import layers
+from prospector.api import engine, layers
 from prospector.config import settings
 from prospector.llm.tracing import init_tracing
 
@@ -21,6 +21,7 @@ app.add_middleware(
 )
 
 app.include_router(layers.router)
+app.include_router(engine.router)
 
 
 @app.get("/health")
