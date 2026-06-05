@@ -51,6 +51,17 @@
   background: #1e293b;
 }
 
+/* "Looking for" is the primary action — give it a subtle highlight. */
+.bar-btn.primary {
+  border-color: #3f8f5f;
+  background: rgba(63, 143, 95, 0.16);
+  font-weight: 600;
+}
+
+.bar-btn.primary:hover {
+  background: rgba(63, 143, 95, 0.28);
+}
+
 .status-mini {
   flex: 1;
   min-width: 0;
@@ -185,11 +196,6 @@
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: #94a3b8;
-}
-
-.field-label.section {
-  display: block;
-  margin: 10px 0 4px;
 }
 
 .field select {

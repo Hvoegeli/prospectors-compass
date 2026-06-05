@@ -32,20 +32,24 @@ const BASE_STYLE: StyleSpecification = {
   ],
 }
 
-type LayerInfo = { id: string; label: string; group: 'overlay' | 'finds' }
+// Menu group: 'finds' = where minerals are proven/likely; 'land' = land status &
+// claims (can I be/dig here); 'access' = getting there + the ground. The target
+// SELECTOR lives in its own "Looking for" menu (it's not a layer toggle).
+type LayerInfo = { id: string; label: string; group: 'finds' | 'land' | 'access' }
 
-// Draw order: fills (geology→context→targets), then lines, then points on top.
+// Array order is the map DRAW order (fills first, then lines, then points on
+// top) — keep it; only `group` controls which menu a layer appears under.
 const LAYERS: LayerInfo[] = [
-  { id: 'geology', label: 'Geologic map', group: 'overlay' },
-  { id: 'ownership', label: 'Land ownership', group: 'overlay' },
+  { id: 'geology', label: 'Geologic map', group: 'access' },
+  { id: 'ownership', label: 'Land ownership', group: 'land' },
   { id: 'potential', label: 'Mineral potential (CGS)', group: 'finds' },
   { id: 'districts', label: 'Historic mining districts', group: 'finds' },
-  { id: 'claims', label: 'Active mining claims (BLM)', group: 'overlay' },
-  { id: 'forests', label: 'National forest boundaries', group: 'overlay' },
-  { id: 'counties', label: 'County boundaries', group: 'overlay' },
-  { id: 'roads', label: 'Roads (public + USFS)', group: 'overlay' },
-  { id: 'trails', label: 'Trails (4WD + USFS)', group: 'overlay' },
-  { id: 'aml', label: 'Mine hazards (AML)', group: 'finds' },
+  { id: 'claims', label: 'Active mining claims (BLM)', group: 'land' },
+  { id: 'forests', label: 'National forest boundaries', group: 'land' },
+  { id: 'counties', label: 'County boundaries', group: 'access' },
+  { id: 'roads', label: 'Roads (public + USFS)', group: 'access' },
+  { id: 'trails', label: 'Trails (4WD + USFS)', group: 'access' },
+  { id: 'aml', label: 'Mine hazards (AML)', group: 'access' },
   { id: 'usmin', label: 'USMIN features', group: 'finds' },
   { id: 'mrds', label: 'MRDS mines', group: 'finds' },
 ]
@@ -541,7 +545,7 @@ function amlFilter(s: Record<Closure, boolean>): maplibregl.FilterSpecification 
   return ['in', ['get', 'closure'], ['literal', allowed]] as maplibregl.FilterSpecification
 }
 
-type OpenMenu = 'overlays' | 'finds' | 'app' | null
+type OpenMenu = 'looking' | 'finds' | 'land' | 'access' | 'app' | null
 
 export default function MapView() {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -742,8 +746,9 @@ export default function MapView() {
     setOpenMenu((cur) => (cur === name ? null : name))
   }
 
-  const overlays = LAYERS.filter((l) => l.group === 'overlay')
   const finds = LAYERS.filter((l) => l.group === 'finds')
+  const land = LAYERS.filter((l) => l.group === 'land')
+  const access = LAYERS.filter((l) => l.group === 'access')
 
   return (
     <div className="map-root">
@@ -753,30 +758,12 @@ export default function MapView() {
       <header className="topbar">
         <span className="brand">Prospector's Compass</span>
 
+        {/* 1 — Looking for: the search intent (target selector + gems) */}
         <div className="bar-item">
-          <button className="bar-btn" onClick={() => toggleMenu('overlays')}>
-            Overlays ▾
+          <button className="bar-btn primary" onClick={() => toggleMenu('looking')}>
+            Looking for ▾
           </button>
-          {openMenu === 'overlays' && (
-            <div className="dropdown">
-              {overlays.map((l) => (
-                <label key={l.id} className="layer-toggle">
-                  <input type="checkbox" checked={visible[l.id]} onChange={() => toggle(l.id)} />
-                  {l.label}
-                </label>
-              ))}
-              <a className="claims-link" href="https://mlrs.blm.gov/" target="_blank" rel="noreferrer">
-                ⛏ Verify mining claims — BLM MLRS ↗
-              </a>
-            </div>
-          )}
-        </div>
-
-        <div className="bar-item">
-          <button className="bar-btn" onClick={() => toggleMenu('finds')}>
-            Finds / Targets ▾
-          </button>
-          {openMenu === 'finds' && (
+          {openMenu === 'looking' && (
             <div className="dropdown wide">
               <label className="field">
                 <span className="field-label">What are you looking for?</span>
@@ -813,15 +800,23 @@ export default function MapView() {
                   )}
                 </div>
               )}
+            </div>
+          )}
+        </div>
 
-              <span className="field-label section">Show on map</span>
+        {/* 2 — Known finds: where minerals are proven/likely */}
+        <div className="bar-item">
+          <button className="bar-btn" onClick={() => toggleMenu('finds')}>
+            Known finds ▾
+          </button>
+          {openMenu === 'finds' && (
+            <div className="dropdown">
               {finds.map((l) => (
                 <label key={l.id} className="layer-toggle">
                   <input type="checkbox" checked={visible[l.id]} onChange={() => toggle(l.id)} />
                   {l.label}
                 </label>
               ))}
-
               {visible.mrds && (
                 <label className="field advanced">
                   <span className="field-label">Advanced — deposit type</span>
@@ -833,7 +828,43 @@ export default function MapView() {
                   </select>
                 </label>
               )}
+            </div>
+          )}
+        </div>
 
+        {/* 3 — Land & claims: can I legally be / dig here */}
+        <div className="bar-item">
+          <button className="bar-btn" onClick={() => toggleMenu('land')}>
+            Land & claims ▾
+          </button>
+          {openMenu === 'land' && (
+            <div className="dropdown">
+              {land.map((l) => (
+                <label key={l.id} className="layer-toggle">
+                  <input type="checkbox" checked={visible[l.id]} onChange={() => toggle(l.id)} />
+                  {l.label}
+                </label>
+              ))}
+              <a className="claims-link" href="https://mlrs.blm.gov/" target="_blank" rel="noreferrer">
+                ⛏ Verify mining claims — BLM MLRS ↗
+              </a>
+            </div>
+          )}
+        </div>
+
+        {/* 4 — Access & terrain: getting there + the ground underfoot */}
+        <div className="bar-item">
+          <button className="bar-btn" onClick={() => toggleMenu('access')}>
+            Access & terrain ▾
+          </button>
+          {openMenu === 'access' && (
+            <div className="dropdown">
+              {access.map((l) => (
+                <label key={l.id} className="layer-toggle">
+                  <input type="checkbox" checked={visible[l.id]} onChange={() => toggle(l.id)} />
+                  {l.label}
+                </label>
+              ))}
               {visible.aml && (
                 <div className="field advanced">
                   <span className="field-label">Mine hazard — opening status</span>
@@ -947,9 +978,17 @@ export default function MapView() {
               click any feature for its details and source link.
             </p>
 
+            <h3>The menus</h3>
+            <p>
+              The top bar groups everything by the question you&rsquo;re asking:
+              <b> Looking for</b> (what you&rsquo;re hunting) · <b>Known finds</b> (where minerals
+              are proven or likely) · <b>Land &amp; claims</b> (can I legally be / dig here) ·
+              <b> Access &amp; terrain</b> (getting there and the ground underfoot).
+            </p>
+
             <h3>What are you looking for?</h3>
             <p>
-              Pick a <b>target</b> (in <i>Finds / Targets</i>) and the map focuses on it: the mineral-
+              Pick a <b>target</b> (in <i>Looking for</i>) and the map focuses on it: the mineral-
               potential layer recolors to that target's favorability, and the known mines filter to it.
               Some targets only have one kind of evidence — e.g. there's no silver <i>potential</i> layer,
               and no catalogued rare-earth <i>mines</i> in the corridor; the map says so when that happens.
@@ -957,20 +996,25 @@ export default function MapView() {
               raw commodity.
             </p>
 
-            <h3>Finds / targets</h3>
+            <h3>Known finds</h3>
             <ul>
               <li><b>Mineral potential (CGS)</b> — favorability rating (low → high amber) for the chosen target.</li>
               <li><b>Historic mining districts</b> — proven-productive metal-mining ground.</li>
-              <li><b>MRDS mines</b> — known mineral occurrences. <span className="k cyan" />placer (stream gravels) vs <span className="k amber" />lode (hard rock).</li>
+              <li><b>MRDS mines</b> — known mineral occurrences. <span className="k cyan" />placer (stream gravels) vs <span className="k amber" />lode (hard rock). <i>Tip: filter to commodity</i> <b>Geothermal</b> <i>to see hot/warm springs.</i></li>
               <li><b>USMIN features</b> — mine features digitized from historic topo maps.</li>
             </ul>
 
-            <h3>Overlays</h3>
+            <h3>Land &amp; claims</h3>
             <ul>
-              <li><b>Geologic map</b> — bedrock colored by rock type.</li>
               <li><b>Land ownership</b> — colored by access-relevance (who manages it). See the disclaimer below.</li>
               <li><b>Active mining claims (BLM)</b> — <span className="k red" />ground a third party has currently staked for mineral rights. Tells you which public land is already spoken for, so you don&rsquo;t prospect a claim that isn&rsquo;t yours. Boundaries are PLSS-approximate — verify via the BLM MLRS link.</li>
-              <li><b>National forests / counties</b> — boundary context.</li>
+              <li><b>National forest boundaries</b> — which named forest you&rsquo;re in (prospecting rules differ per forest).</li>
+            </ul>
+
+            <h3>Access &amp; terrain</h3>
+            <ul>
+              <li><b>Geologic map</b> — bedrock colored by rock type.</li>
+              <li><b>County boundaries</b> — boundary context.</li>
               <li><b>Roads / trails</b> — public + USFS; primary roads are thicker.</li>
               <li><b>Mine hazards (AML)</b> — abandoned-mine hazards (orange → red by severity). Stay clear.</li>
             </ul>
