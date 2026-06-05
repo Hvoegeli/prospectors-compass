@@ -476,6 +476,14 @@
   background: #ef4444;
 }
 
+.help .k.blue {
+  background: #3b82f6;
+}
+
+.help .k.violet {
+  background: #a855f7;
+}
+
 .help-close {
   position: absolute;
   top: 10px;

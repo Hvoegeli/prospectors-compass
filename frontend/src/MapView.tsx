@@ -47,8 +47,10 @@ const LAYERS: LayerInfo[] = [
   { id: 'claims', label: 'Active mining claims (BLM)', group: 'land' },
   { id: 'forests', label: 'National forest boundaries', group: 'land' },
   { id: 'counties', label: 'County boundaries', group: 'access' },
+  { id: 'streams', label: 'Streams & rivers', group: 'access' },
   { id: 'roads', label: 'Roads (public + USFS)', group: 'access' },
   { id: 'trails', label: 'Trails (4WD + USFS)', group: 'access' },
+  { id: 'faults', label: 'Faults (lode structure)', group: 'finds' },
   { id: 'aml', label: 'Mine hazards (AML)', group: 'access' },
   { id: 'usmin', label: 'USMIN features', group: 'finds' },
   { id: 'mrds', label: 'MRDS mines', group: 'finds' },
@@ -316,6 +318,22 @@ function layerSpec(id: string): LayerSpecification {
       }
     case 'counties':
       return { id, source, type: 'line', paint: { 'line-color': '#e2e8f0', 'line-width': 1.4 } }
+    case 'streams':
+      // Main perennial creeks, rivers & streams (year-round water for panning).
+      return {
+        id,
+        source,
+        type: 'line',
+        paint: { 'line-color': '#3b82f6', 'line-width': 1.2, 'line-opacity': 0.85 },
+      }
+    case 'faults':
+      // Structural faults (lode control), drawn as a distinct violet dashed line.
+      return {
+        id,
+        source,
+        type: 'line',
+        paint: { 'line-color': '#a855f7', 'line-width': 1, 'line-dasharray': [4, 2] },
+      }
     case 'roads':
       return {
         id,
@@ -417,6 +435,7 @@ const PROP_LABELS: Record<string, string> = {
   hazard_kind: 'Hazard Kind',
   feature_type: 'Feature Type',
   haz_rating: 'Hazard Rating',
+  flow_type: 'Flow',
   env_rating: 'Environmental Rating',
   au_placer: 'Placer Gold Potential',
   pegmatite: 'Pegmatite Potential',
@@ -445,7 +464,7 @@ function valueCell(value: string): string {
 }
 
 function featureRows(props: Record<string, unknown>): string {
-  const skip = new Set(['id', 'state_fips'])
+  const skip = new Set(['id', 'state_fips', 'nhd_id']) // nhd_id is an ugly provenance GUID
   return Object.entries(props)
     .filter(([k, v]) => !skip.has(k) && v !== null && v !== '')
     .map(([k, v]) => `<tr><td>${esc(prettyLabel(k))}</td><td>${valueCell(String(v))}</td></tr>`)
@@ -466,8 +485,8 @@ type Facets = { commodities: string[]; deposit_types: string[] }
 
 // Heavy layers load by viewport (bbox). MRDS skips bbox when commodity-filtered
 // (a filter is meant to find a target everywhere, not just on-screen).
-const BBOX_LAYERS = new Set(['mrds', 'usmin', 'potential', 'aml', 'claims'])
-const PAN_LAYERS = ['usmin', 'potential', 'aml', 'claims'] // mrds is handled separately
+const BBOX_LAYERS = new Set(['mrds', 'usmin', 'potential', 'aml', 'claims', 'streams'])
+const PAN_LAYERS = ['usmin', 'potential', 'aml', 'claims', 'streams'] // mrds is handled separately
 
 function bboxParam(map: maplibregl.Map): string {
   const b = map.getBounds()
@@ -894,7 +913,7 @@ export default function MapView() {
       if (!feats.length) return
       const order = [
         'mrds', 'usmin', 'aml', 'districts', 'claims', 'potential',
-        'roads', 'trails', 'geology', 'ownership', 'forests', 'counties',
+        'roads', 'trails', 'streams', 'geology', 'ownership', 'forests', 'counties',
       ]
       const picked = order
         .map((id) => feats.find((f) => f.layer.id === id))
@@ -1196,6 +1215,12 @@ export default function MapView() {
             </span>
           </div>
         )}
+        {visible.streams && (
+          <div className="legend-row">
+            <b>Water</b>
+            <span><i style={{ background: '#3b82f6' }} />streams &amp; rivers</span>
+          </div>
+        )}
       </div>
 
       {/* Help / user manual */}
@@ -1233,6 +1258,7 @@ export default function MapView() {
               <li><b>Historic mining districts</b> — proven-productive metal-mining ground.</li>
               <li><b>MRDS mines</b> — known mineral occurrences. <span className="k cyan" />placer (stream gravels) vs <span className="k amber" />lode (hard rock). <i>Tip: filter to commodity</i> <b>Geothermal</b> <i>to see hot/warm springs.</i></li>
               <li><b>USMIN features</b> — mine features digitized from historic topo maps.</li>
+              <li><b>Faults (lode structure)</b> — <span className="k violet" />mapped fault lines. Faults and fractures are the dominant structural control on hard-rock (lode) ore, so veins and deposits cluster along them — a key lode-prospecting indicator.</li>
             </ul>
 
             <h3>Land &amp; claims</h3>
@@ -1246,6 +1272,7 @@ export default function MapView() {
             <ul>
               <li><b>Geologic map</b> — bedrock colored by rock type.</li>
               <li><b>County boundaries</b> — boundary context.</li>
+              <li><b>Streams &amp; rivers</b> — <span className="k blue" />main perennial creeks, rivers &amp; streams (year-round water — what you need to pan or sluice). Placer gold follows water, so trace a creek downhill from a lode or district.</li>
               <li><b>Roads / trails</b> — public + USFS; primary roads are thicker.</li>
               <li><b>Mine hazards (AML)</b> — abandoned-mine hazards (orange → red by severity). Stay clear.</li>
             </ul>

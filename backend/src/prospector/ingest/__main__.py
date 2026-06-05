@@ -21,12 +21,14 @@ from datetime import datetime, timezone
 from prospector.ingest.blm_claims import ingest_claims
 from prospector.ingest.census import ingest_counties
 from prospector.ingest.cgs import ingest_aml, ingest_districts, ingest_potential
+from prospector.ingest.faults import ingest_faults
 from prospector.ingest.focus_area import DEFAULT_REGION
 from prospector.ingest.geology import ingest_geology
 from prospector.ingest.mrds import ingest_mrds
 from prospector.ingest.padus import ingest_ownership
 from prospector.ingest.roads import ingest_forest, ingest_roads
 from prospector.ingest.storage import PROCESSED_DIR, ensure_dir
+from prospector.ingest.streams import ingest_streams
 from prospector.ingest.terrain import build_basemap
 from prospector.ingest.usfs_forest import ingest_forests
 from prospector.ingest.usmin import ingest_usmin
@@ -118,6 +120,20 @@ def _run_watershed() -> None:
     print(f"✓ Loaded {count} subwatersheds into PostGIS table 'watersheds'.")
 
 
+def _run_streams() -> None:
+    region = DEFAULT_REGION
+    print(f"Ingesting USGS NHD stream flowlines for: {region.name}")
+    count = ingest_streams(region)
+    print(f"✓ Loaded {count} stream flowlines into PostGIS table 'streams'.")
+
+
+def _run_faults() -> None:
+    region = DEFAULT_REGION
+    print(f"Ingesting CGS fault lines for: {region.name}")
+    count = ingest_faults(region)
+    print(f"✓ Loaded {count} fault segments into PostGIS table 'faults'.")
+
+
 def _run_claims() -> None:
     region = DEFAULT_REGION
     print(f"Ingesting BLM active mining claims for: {region.name}")
@@ -147,6 +163,8 @@ def _run_all() -> None:
     _run_potential()
     _run_aml()
     _run_watershed()
+    _run_streams()
+    _run_faults()
     _run_claims()
 
 
@@ -187,6 +205,8 @@ def main() -> None:
     sub.add_parser("potential", help="Download + load CGS mineral-resource potential")
     sub.add_parser("aml", help="Download + load CGS abandoned-mine-land hazards")
     sub.add_parser("watershed", help="Download + load USGS WBD HUC12 subwatersheds")
+    sub.add_parser("streams", help="Download + load USGS NHD stream/river flowlines")
+    sub.add_parser("faults", help="Download + load CGS fault lines")
     sub.add_parser("claims", help="Download + load BLM active mining claims")
     sub.add_parser("all", help="Run every ingestion step in order")
     sub.add_parser("refresh", help="Force fresh re-download + re-ingest of every source")
@@ -218,6 +238,10 @@ def main() -> None:
         _run_aml()
     elif args.command == "watershed":
         _run_watershed()
+    elif args.command == "streams":
+        _run_streams()
+    elif args.command == "faults":
+        _run_faults()
     elif args.command == "claims":
         _run_claims()
     elif args.command == "all":

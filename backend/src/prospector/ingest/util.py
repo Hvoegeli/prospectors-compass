@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pandas as pd
-from shapely.geometry import MultiPolygon
+from shapely.geometry import MultiLineString, MultiPolygon
 
 
 def na_to_none(value: object) -> str | None:
@@ -34,4 +34,19 @@ def to_multipolygon(geom: object) -> MultiPolygon | None:
         return geom
     if geom.geom_type == "Polygon":
         return MultiPolygon([geom])
+    return None
+
+
+def to_multilinestring(geom: object) -> MultiLineString | None:
+    """Coerce a LineString/MultiLineString to MultiLineString; drop empties/others.
+
+    Used after ``gpd.clip(..., keep_geom_type=True)`` on line layers (roads, NHD
+    stream flowlines), so the column is uniformly MultiLineString for PostGIS.
+    """
+    if geom is None or geom.is_empty:
+        return None
+    if geom.geom_type == "MultiLineString":
+        return geom
+    if geom.geom_type == "LineString":
+        return MultiLineString([geom])
     return None

@@ -59,6 +59,35 @@ the CGS REST "public domain" statement make a strong case, but a commercial prod
 wants that confirmation **on file per dataset**. Prefer pulling CGS data via the
 public-domain REST services where the same layers are available.
 
+## Probe findings (2026-06-05) — ingestion reality
+
+Live service probes corrected the shortlist above:
+
+- **CGS `Statemap` MapServer** (cgsarcimage.mines.edu) is only a **quad index**
+  (which 7.5′ quads are mapped, by year) — NOT the geologic-unit polygons. There is
+  **no CGS bedrock-geology REST service** to ingest. The detailed CGS data exists
+  only as the per-publication **GeMS download zips** (shapefile/gdb), which are
+  amber-licensed and cover only the western 30×60 quads.
+- **Macrostrat API** returns unit *attributes* at a point but **no polygon geometry**
+  via the API (`format=geojson` yields 0 features; geometry is served only as vector
+  tiles). So Macrostrat is **not bulk-ingestible as a polygon layer** — good for
+  point lookups, not for a map layer.
+- **USGS 1°×2° OFR 99-0427** download files were not cleanly locatable from the pub
+  page, and `.e00` is a fiddly legacy format — uncertain effort, not a quick win.
+
+**Net:** there is no clean, statewide, finer-than-SGMC geology source that is both
+ingestible AND commercially licensable. The only *achievable* upgrade is the CGS
+GeMS shapefiles for the **western 5 counties** (Mesa/Delta/Montrose/Gunnison/
+Garfield) — which misses the central mining belt (Leadville/Clear Creek/Gilpin/
+Summit) where prospecting interest is highest.
+
+**Recommendation (2026-06-05):** keep the statewide USGS SGMC (1:500k) as the
+geology layer; **defer** detailed geology (low ROI: partial coverage that skips the
+prime districts + fiddly GeMS parsing). Revisit CGS GeMS as a western-county
+extra-detail overlay if/when desired. Higher-value next work: the recommendation
+engine. (The NHD streams layer — the genuinely high-value water add — was built
+this round.)
+
 ## Implementation note
 
 A streams/rivers layer (USGS NHD flowlines, public domain) was identified separately

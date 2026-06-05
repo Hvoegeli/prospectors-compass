@@ -367,3 +367,54 @@ class Watershed(Base):
     geom: Mapped[object] = mapped_column(
         Geometry(geometry_type="MULTIPOLYGON", srid=WGS84, spatial_index=True)
     )
+
+
+class Stream(Base):
+    """A natural stream / river / creek flowline (USGS NHD), clipped to the focus area.
+
+    Source: USGS National Hydrography Dataset (NHD), high-resolution Flowline
+    (TNM `nhd/MapServer/6`), filtered to PERENNIAL MAIN channels (FType 460
+    StreamRiver, fcode 46006 + a visibility-filter threshold) — gold panning
+    needs year-round water, so seasonal and capillary streams are dropped. Placer
+    gold concentrates in drainages, so trace a creek downhill from a lode/district
+    to find where to pan. Pairs with the HUC12 `watersheds` (basins) and the
+    field-guide placer advice. (`flow_type` is "Perennial" for all v1 rows.)
+
+    Coverage layer; re-ingest scoped by `state_fips`. License: public domain
+    (US Government work, 17 U.S.C. §105).
+    """
+
+    __tablename__ = "streams"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    state_fips: Mapped[str] = mapped_column(String(2), nullable=False, index=True)
+    #: NHD permanent identifier (provenance; not guaranteed unique after clipping).
+    nhd_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    #: GNIS name where present, e.g. "Clear Creek".
+    name: Mapped[str | None] = mapped_column(String, nullable=True)
+    #: Flow regime decoded from NHD fcode (Perennial for all v1 rows); popup metadata.
+    flow_type: Mapped[str | None] = mapped_column(String, nullable=True)
+    geom: Mapped[object] = mapped_column(
+        Geometry(geometry_type="MULTILINESTRING", srid=WGS84, spatial_index=True)
+    )
+
+
+class Fault(Base):
+    """A mapped geologic fault line (CGS), clipped to the focus area.
+
+    Source: Colorado Geological Survey fault compilation (statewide, ~1:500k,
+    from the Tweto state structural map) via the CGS ArcGIS Fault_Server (layer
+    15). Faults/fractures are the dominant structural control on lode (hard-rock)
+    mineralization — ore deposits cluster along them — so this feeds the
+    recommendation engine's lode "proximity to structure" factor. Geometry-only
+    (the source carries no usable fault name/type). Coverage layer; re-ingest
+    scoped by `state_fips`. License: CGS state-gov data (see docs/DATA_SOURCES.md).
+    """
+
+    __tablename__ = "faults"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    state_fips: Mapped[str] = mapped_column(String(2), nullable=False, index=True)
+    geom: Mapped[object] = mapped_column(
+        Geometry(geometry_type="MULTILINESTRING", srid=WGS84, spatial_index=True)
+    )

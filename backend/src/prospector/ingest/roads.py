@@ -20,7 +20,6 @@ import logging
 import geopandas as gpd
 import pandas as pd
 from geoalchemy2.shape import from_shape
-from shapely.geometry import MultiLineString
 from sqlalchemy import and_, delete
 
 from prospector.db.base import Base, SessionLocal, engine
@@ -28,7 +27,7 @@ from prospector.db.models import RoadSegment
 from prospector.ingest.census import load_region_counties
 from prospector.ingest.focus_area import DEFAULT_REGION, DownloadRegion
 from prospector.ingest.storage import RAW_DIR, download_file
-from prospector.ingest.util import na_to_none
+from prospector.ingest.util import na_to_none, to_multilinestring
 
 log = logging.getLogger(__name__)
 
@@ -49,16 +48,6 @@ _MTFCC: dict[str, tuple[str, str]] = {
 }
 
 
-def _to_multilinestring(geom: object) -> MultiLineString | None:
-    if geom is None or geom.is_empty:
-        return None
-    if geom.geom_type == "MultiLineString":
-        return geom
-    if geom.geom_type == "LineString":
-        return MultiLineString([geom])
-    return None
-
-
 def load_region_roads(region: DownloadRegion = DEFAULT_REGION) -> gpd.GeoDataFrame:
     """Load + classify TIGER roads/trails for the region's counties (WGS84)."""
     frames = []
@@ -73,7 +62,7 @@ def load_region_roads(region: DownloadRegion = DEFAULT_REGION) -> gpd.GeoDataFra
     roads = roads.set_crs(roads.crs or 4269).to_crs(epsg=WGS84)
     roads["category"] = roads["MTFCC"].map(lambda m: _MTFCC[m][0])
     roads["road_class"] = roads["MTFCC"].map(lambda m: _MTFCC[m][1])
-    roads["geometry"] = roads["geometry"].apply(_to_multilinestring)
+    roads["geometry"] = roads["geometry"].apply(to_multilinestring)
     return roads[roads.geometry.notna()].copy()
 
 
@@ -115,7 +104,7 @@ def _read_usfs_clipped(zip_path, layer: str, bbox, mask) -> gpd.GeoDataFrame:
     gdf = gpd.read_file(f"zip://{zip_path}!{layer}.shp", bbox=tuple(bbox))
     gdf = gdf.to_crs(epsg=WGS84)
     clipped = gpd.clip(gdf, mask, keep_geom_type=True)
-    clipped["geometry"] = clipped.geometry.apply(_to_multilinestring)
+    clipped["geometry"] = clipped.geometry.apply(to_multilinestring)
     return clipped[clipped.geometry.notna()].copy()
 
 
