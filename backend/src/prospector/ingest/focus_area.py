@@ -68,13 +68,16 @@ def _co(name: str, fips: str) -> County:
     return County(name, fips, COLORADO_STATE_FIPS)
 
 
-#: The v1 default region — the I-70 corridor focus area (PRD §7.1).
-#: Order: Denver metro outward along I-70 toward Grand Junction.
+#: The v1 default region — the I-70 corridor focus area (PRD §7.1), expanded
+#: 2026-06 with gem-/ore-rich neighbours (Chaffee, Gunnison, Fremont, Pitkin,
+#: Delta, Montrose). The county set is open-ended — add/remove freely; a re-ingest
+#: + basemap rebuild realizes any change.
 I70_CORRIDOR = DownloadRegion(
-    name="Colorado — I-70 Corridor (v1 default)",
+    name="Colorado — I-70 corridor + central gem/ore neighbours (expanded v1)",
     state_fips=COLORADO_STATE_FIPS,
     state_abbrev="CO",
     counties=(
+        # --- Original I-70 corridor (PRD §7.1) -------------------------------
         _co("Denver", "031"),
         _co("Jefferson", "059"),
         _co("Clear Creek", "019"),
@@ -85,6 +88,13 @@ I70_CORRIDOR = DownloadRegion(
         _co("Eagle", "037"),
         _co("Garfield", "045"),
         _co("Mesa", "077"),
+        # --- Expansion: gem-/ore-rich neighbours + US 50 toward Grand Junction
+        _co("Chaffee", "015"),   # Mt Antero aquamarine; Nathrop rhyolite topaz/garnet
+        _co("Gunnison", "051"),  # North Italian Mtn lapis lazuli; gold / molybdenum
+        _co("Fremont", "043"),   # pegmatite aquamarine / beryl / topaz
+        _co("Pitkin", "097"),    # Aspen silver / lead-zinc district
+        _co("Delta", "029"),     # US 50 toward Grand Junction
+        _co("Montrose", "085"),  # US 50; Uravan uranium/vanadium belt nearby
     ),
 )
 
