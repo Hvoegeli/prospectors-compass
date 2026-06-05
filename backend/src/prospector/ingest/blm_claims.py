@@ -49,6 +49,27 @@ _CLAIM_FIELDS: dict[str, str] = {
 _CLAIMS_PAGE = 1000
 
 
+def _clean(value: object) -> str | None:
+    """Strip and collapse whitespace (incl. stray newlines) in a source string.
+
+    BLM text fields carry inconsistent whitespace — e.g. a trailing newline on
+    some ``case_group`` values — which would render as a broken line in popups.
+    """
+    s = na_to_none(value)
+    return " ".join(s.split()) if s else s
+
+
+def _clean_title(value: object) -> str | None:
+    """Whitespace-clean a source string and Title-Case it.
+
+    BLM mixes casing on ``claim_type`` (``Lode Claim`` vs ``LODE CLAIM``); this
+    makes it read uniformly. Not used on names/serials (Title-casing would mangle
+    e.g. ``RADIUM-002``).
+    """
+    s = _clean(value)
+    return s.title() if s else s
+
+
 def _county_mask(region: DownloadRegion):
     """(bbox, dissolved-union geometry) for the region's counties, in WGS84."""
     counties = load_region_counties(region)
@@ -87,11 +108,11 @@ def ingest_claims(region: DownloadRegion = DEFAULT_REGION) -> int:
             session.add(
                 MiningClaim(
                     state_fips=region.state_fips,
-                    serial_nr=na_to_none(getattr(row, "serial_nr", None)),
-                    claim_name=na_to_none(getattr(row, "claim_name", None)),
-                    claim_type=na_to_none(getattr(row, "claim_type", None)),
-                    case_group=na_to_none(getattr(row, "case_group", None)),
-                    case_disp=na_to_none(getattr(row, "case_disp", None)),
+                    serial_nr=_clean(getattr(row, "serial_nr", None)),
+                    claim_name=_clean(getattr(row, "claim_name", None)),
+                    claim_type=_clean_title(getattr(row, "claim_type", None)),
+                    case_group=_clean(getattr(row, "case_group", None)),
+                    case_disp=_clean(getattr(row, "case_disp", None)),
                     acres=na_to_float(getattr(row, "acres", None)),
                     geom=from_shape(row.geometry, srid=WGS84),
                 )
