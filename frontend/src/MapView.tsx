@@ -943,6 +943,30 @@ export default function MapView() {
               agency, and check mining claims via the BLM MLRS link, before digging.
             </p>
 
+            <h3>Where else to look (gems &amp; gold not in the map data)</h3>
+            <p>
+              Some Colorado gems and gold aren&rsquo;t in the federal/state datasets behind this
+              map — e.g. opal near Grand Junction (Grand Mesa basalts) or turquoise near Leadville.
+              These authoritative references help fill the gaps:
+            </p>
+            <ul>
+              <li>
+                <a href="https://coloradogeologicalsurvey.org/geology/gemstones/" target="_blank" rel="noreferrer">
+                  CGS — Colorado gemstones ↗
+                </a>
+              </li>
+              <li>
+                <a href="https://pubs.usgs.gov/gip/prospect2/prospectgip.html" target="_blank" rel="noreferrer">
+                  USGS — Prospecting for Gold ↗
+                </a>
+              </li>
+              <li>
+                <a href="https://pubs.usgs.gov/publication/pp610" target="_blank" rel="noreferrer">
+                  USGS Professional Paper 610 — Principal Gold-Producing Districts ↗
+                </a>
+              </li>
+            </ul>
+
             <h3>Coming soon</h3>
             <p>Settings, profile, and transferring an area to the offline phone app.</p>
           </div>
