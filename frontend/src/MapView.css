@@ -455,6 +455,49 @@
   line-height: 1.4;
 }
 
+/* Directions footer — clicked coordinate + Google/Apple Maps links */
+.popup-go {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.go-coord {
+  font: 12px/1.3 ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: #334155;
+  margin-bottom: 4px;
+}
+
+.go-links {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font: 12px system-ui, sans-serif;
+}
+
+.go-links a {
+  color: #2563eb;
+  text-decoration: none;
+}
+
+.go-links a:hover {
+  text-decoration: underline;
+}
+
+.go-copy {
+  background: #f1f5f9;
+  color: #0f172a;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  padding: 2px 8px;
+  font: 12px system-ui, sans-serif;
+  cursor: pointer;
+}
+
+.go-copy:hover {
+  background: #e2e8f0;
+}
+
 /* --- Disclaimer chip (bottom-right) --------------------------------------- */
 .disclaimer-chip {
   position: absolute;

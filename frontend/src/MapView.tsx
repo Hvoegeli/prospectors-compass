@@ -550,21 +550,48 @@ function recommendFC(data: ScoreResult, label: string): GeoJSON.FeatureCollectio
   }
 }
 
-// Size the grid cells to the viewport so the whole view fits under the engine's
-// cell cap. A fixed small cell size over a wide view would score only a corner
-// (score_area grids from the bbox corner and LIMITs). Returns size in meters +
-// whether even the coarsest cell leaves the view partial (a "zoom in" hint).
-const REC_TARGET_CELLS = 2500
+// Size the grid cells to the viewport so the WHOLE view fits under the engine's
+// cell cap. The backend grids from the bbox corner and LIMITs, so too many cells
+// truncates to a band (a misleading strip) — instead we grow the cell size to
+// fill the view (coarse but complete), only flagging "partial" if even the
+// coarsest allowed cell still overflows the cap. `coarse` = cells big enough that
+// the heat is blocky and the user should zoom in for finer detail.
+// Constant cell BUDGET at every zoom: detail scales with how far you're zoomed
+// in (small area ÷ fixed budget = small cells). Kept modest because the placer
+// profile's per-cell source-basin lookup gets expensive past ~2k cells (a query
+// -planner cliff: ~2k cells ≈ 9s, 3k ≈ 49s) — staying well under keeps it ~7s.
+const REC_TARGET_CELLS = 1800
 const REC_MAX_CELLS = 3000
-function suggestCellSize(map: maplibregl.Map): { cell: number; partial: boolean } {
+const REC_MIN_CELL = 100
+const REC_MAX_CELL = 6000 // must match the API's cell_size_m upper bound
+const REC_FINE_CELL = 700 // above this, the grid reads as coarse blocks
+function suggestCellSize(map: maplibregl.Map): { cell: number; coarse: boolean; partial: boolean } {
   const b = map.getBounds()
   const latMid = ((b.getNorth() + b.getSouth()) / 2) * (Math.PI / 180)
   const mPerDegLat = 111_320
   const widthM = (b.getEast() - b.getWest()) * mPerDegLat * Math.cos(latMid)
   const heightM = (b.getNorth() - b.getSouth()) * mPerDegLat
   const area = Math.abs(widthM * heightM)
-  const cell = Math.max(100, Math.min(1000, Math.round(Math.sqrt(area / REC_TARGET_CELLS))))
-  return { cell, partial: area / (cell * cell) > REC_MAX_CELLS }
+  const cell = Math.max(REC_MIN_CELL, Math.min(REC_MAX_CELL, Math.round(Math.sqrt(area / REC_TARGET_CELLS))))
+  return { cell, coarse: cell > REC_FINE_CELL, partial: area / (cell * cell) > REC_MAX_CELLS }
+}
+
+// Pre-trip directions footer: every popup carries the clicked coordinate plus
+// one-tap links into Google / Apple Maps (online, at-home/trailhead planning —
+// the route is fetched with signal, then you carry it into the field offline).
+function directionsHtml(lngLat: maplibregl.LngLat): string {
+  const lat = lngLat.lat.toFixed(5)
+  const lon = lngLat.lng.toFixed(5)
+  const google = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lon}`
+  const apple = `https://maps.apple.com/?daddr=${lat},${lon}&dirflg=d`
+  return `<div class="popup-go">
+    <div class="go-coord" title="latitude, longitude">📍 ${lat}, ${lon}</div>
+    <div class="go-links">
+      <button class="go-copy" data-coord="${lat}, ${lon}">Copy</button>
+      <a href="${google}" target="_blank" rel="noreferrer">Google ↗</a>
+      <a href="${apple}" target="_blank" rel="noreferrer">Apple ↗</a>
+    </div>
+  </div>`
 }
 
 const GATE_LABELS: Record<string, string> = {
@@ -878,7 +905,9 @@ export default function MapView() {
   const [engineTargets, setEngineTargets] = useState<EngineTarget[]>([])
   const [engineTarget, setEngineTarget] = useState('au_placer')
   const [scoring, setScoring] = useState(false)
-  const [recResult, setRecResult] = useState<{ count: number; label: string; partial: boolean } | null>(null)
+  const [recResult, setRecResult] = useState<
+    { count: number; label: string; coarse: boolean; partial: boolean } | null
+  >(null)
 
   const resolved = resolveTarget(target)
 
@@ -1071,10 +1100,18 @@ export default function MapView() {
       const rec = feats.find((f) => f.layer.id === 'recommend')
       if (!picked.length && !rec) return
       const recHtml = rec ? recommendSectionHtml(rec.properties ?? {}) : ''
-      new maplibregl.Popup({ maxWidth: '360px', closeButton: true, closeOnClick: true })
+      const popup = new maplibregl.Popup({ maxWidth: '360px', closeButton: true, closeOnClick: true })
         .setLngLat(e.lngLat)
-        .setHTML(`<div class="popup">${recHtml}${featureSections(picked)}</div>`)
+        .setHTML(`<div class="popup">${recHtml}${featureSections(picked)}${directionsHtml(e.lngLat)}</div>`)
         .addTo(map)
+      // Wire the "Copy coordinates" button (inline onclick can't reach app scope).
+      const copyBtn = popup.getElement()?.querySelector('.go-copy') as HTMLButtonElement | null
+      if (copyBtn) {
+        copyBtn.addEventListener('click', () => {
+          void navigator.clipboard?.writeText(copyBtn.dataset.coord ?? '')
+          copyBtn.textContent = 'Copied ✓'
+        })
+      }
     })
 
     return () => {
@@ -1136,7 +1173,7 @@ export default function MapView() {
     if (!map || !ready || scoring) return
     const t = engineTargets.find((x) => x.id === engineTarget)
     if (!t) return
-    const { cell, partial } = suggestCellSize(map)
+    const { cell, coarse, partial } = suggestCellSize(map)
     const seq = nextReq(reqSeq.current, 'recommend') // ignore a stale result if re-scored
     setScoring(true)
     setStatus(`Scoring ${t.label}…`)
@@ -1149,11 +1186,13 @@ export default function MapView() {
       const data = (await r.json()) as ScoreResult
       if (reqSeq.current.recommend !== seq) return // a newer score won the race
       ensureRecommendLayer(map, recommendFC(data, t.label))
-      setRecResult({ count: data.count, label: t.label, partial })
-      setStatus(
-        `Recommended ${data.count.toLocaleString()} area(s) for ${t.label}` +
-          (partial ? ' — zoom in for full coverage' : ''),
-      )
+      setRecResult({ count: data.count, label: t.label, coarse, partial })
+      const hint = partial
+        ? ' — zoomed out: only part scored, zoom in'
+        : coarse
+          ? ' — coarse cells; zoom in for finer detail'
+          : ''
+      setStatus(`Recommended ${data.count.toLocaleString()} area(s) for ${t.label}${hint}`)
     } catch (err) {
       console.error('scoring failed', err)
       setStatus('Scoring failed — is the API reachable?')
@@ -1260,8 +1299,12 @@ export default function MapView() {
                 <div className="rec-result">
                   <b>{recResult.count.toLocaleString()}</b> area(s) ranked for {recResult.label}.
                   Click a colored cell to see why.
-                  {recResult.partial && (
-                    <p className="note">Large view — zoom in for finer, full-coverage scoring.</p>
+                  {(recResult.partial || recResult.coarse) && (
+                    <p className="note">
+                      {recResult.partial
+                        ? 'Zoomed out — only part of the view was scored. Zoom in to score it all.'
+                        : 'Coarse cells at this zoom — zoom in for finer detail.'}
+                    </p>
                   )}
                   <button className="rec-clear" onClick={clearRecommend}>Clear recommendations</button>
                 </div>

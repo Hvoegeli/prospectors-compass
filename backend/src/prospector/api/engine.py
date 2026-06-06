@@ -33,7 +33,7 @@ def list_targets() -> dict[str, list[dict]]:
 def score(
     target: str = Query(..., description="a target id from /engine/targets"),
     bbox: str = Query(..., description="minLon,minLat,maxLon,maxLat (WGS84)"),
-    cell_size_m: float = Query(250.0, ge=100, le=1000),
+    cell_size_m: float = Query(250.0, ge=100, le=6000),
     max_cells: int = Query(3000, ge=1, le=6000),
     min_score: float = Query(0.15, ge=0, le=1),
 ) -> dict:
