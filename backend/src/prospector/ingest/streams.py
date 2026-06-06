@@ -1,11 +1,16 @@
 """Ingest USGS NHD stream / river / creek flowlines, clipped to the focus area.
 
 High-resolution NHD Flowline (TNM `nhd/MapServer/6`, "Flowline - Large Scale"),
-filtered to PERENNIAL MAIN channels (FType 460 StreamRiver, fcode 46006, with a
-visibility-filter threshold) — gold panning/sluicing needs year-round water, so
-seasonal and hair-thin capillary streams are dropped (keeps the layer compact and
-prospecting-relevant). bbox-queried + paginated, then clipped to the county union.
-Placer gold follows drainages, so trace a creek downhill from a lode/district.
+filtered to PERENNIAL MAIN channels — gold panning/sluicing needs year-round
+water, so seasonal and hair-thin capillary streams are dropped (keeps the layer
+compact and prospecting-relevant). bbox-queried + paginated, then clipped to the
+county union. Placer gold follows drainages, so trace a creek downhill from a
+lode/district.
+
+Two flowline codes make a complete river: narrow reaches are StreamRiver
+(fcode 46006), but where a river widens enough to be drawn as a polygon, NHD
+threads a centerline ArtificialPath (fcode 55800) through it — so the MAIN STEMS
+of big rivers (Colorado, Gunnison) are almost entirely 55800. Both are included.
 
 Source: USGS National Hydrography Dataset. License: public domain (US Gov work).
 """
@@ -31,19 +36,21 @@ WGS84 = 4326
 #: USGS NHD high-res Flowline (TNM). Layer 6 = "Flowline - Large Scale".
 NHD_FLOWLINE_QUERY = "https://hydro.nationalmap.gov/arcgis/rest/services/nhd/MapServer/6/query"
 _OUT_FIELDS = "permanent_identifier,gnis_name,fcode,ftype"
-#: FType 460 = StreamRiver (natural channels only — excludes canals, pipelines,
-#: artificial paths). fcode=46006 keeps PERENNIAL streams: gold panning/sluicing
-#: needs year-round water, so seasonal (intermittent/ephemeral) channels are
-#: dropped. visibilityfilter>=100000 keeps MAIN channels, dropping hair-thin
-#: capillary tributaries. (Intermittent streams are a possible future toggle —
-#: relevant only for non-gold minerals washed down in past flows.)
-_WHERE = "ftype=460 AND fcode=46006 AND visibilityfilter>=100000"
+#: PERENNIAL main channels only. fcode 46006 = StreamRiver (narrow single-line
+#: reaches); fcode 55800 = ArtificialPath (the centerline through a wide river
+#: polygon — the main stems of Colorado/Gunnison are almost entirely this, so
+#: dropping it lost those rivers). Gold panning/sluicing needs year-round water,
+#: so seasonal (intermittent/ephemeral) channels stay out. visibilityfilter>=
+#: 100000 keeps MAIN channels — drops hair-thin tributaries and small lake/pond
+#: through-flow paths. (Intermittent streams are a possible future toggle.)
+_WHERE = "fcode IN (46006,55800) AND visibilityfilter>=100000"
 #: Detailed line geometry; small pages keep each request light (the TNM hydro
 #: service 504s on large geometry pulls — same reason as the WBD ingest).
 _PAGE = 200
 
-#: NHD StreamRiver fcode -> flow regime (for display + styling).
-_FCODE_FLOW: dict[int, str] = {46006: "Perennial", 46003: "Intermittent"}
+#: NHD fcode -> flow regime (for display + styling). 55800 (artificial path
+#: through a wide river polygon) is a perennial main stem here.
+_FCODE_FLOW: dict[int, str] = {46006: "Perennial", 55800: "Perennial", 46003: "Intermittent"}
 
 
 def _flow_type(fcode: object) -> str | None:
