@@ -62,6 +62,11 @@ const LAYERS: LayerInfo[] = [
 // MRDS mines start off but auto-enable when a target is picked (see enableMrds).
 const DEFAULT_ON = new Set(['ownership', 'streams', 'roads', 'trails', 'counties'])
 
+// When a target/commodity narrows the mines to this few (or fewer), show a
+// left-side jump-list of the individual locations (e.g. platinum → 4, geothermal
+// → 18). Big sets stay dots-only — a list of thousands is useless.
+const MINE_LIST_MAX = 20
+
 // --- Unified "what are you looking for?" target -----------------------------
 // Each curated target lights up whatever evidence exists for it: a mineral-
 // potential favorability column (CGS) and/or a known-mine commodity (MRDS).
@@ -945,6 +950,8 @@ export default function MapView() {
   const [recResult, setRecResult] = useState<
     { count: number; label: string; coarse: boolean; partial: boolean; spots: ScoredCell[] } | null
   >(null)
+  // Small filtered mine sets (≤ MINE_LIST_MAX) → a clickable jump-list of locations.
+  const [mineList, setMineList] = useState<GeoJSON.Feature[] | null>(null)
 
   const resolved = resolveTarget(target)
 
@@ -988,6 +995,7 @@ export default function MapView() {
     if (!isAny && commodity === null) {
       nextReq(reqSeq.current, 'mrds') // invalidate any in-flight mrds fetch
       src.setData(EMPTY_FC) // a target with no catalogued mines (e.g. rare earths)
+      setMineList(null)
       // Defer (not a synchronous setState in the effect body) to avoid cascading renders.
       queueMicrotask(() => setStatus('No catalogued mines for this target'))
       return
@@ -998,8 +1006,11 @@ export default function MapView() {
       .then((data: GeoJSON.FeatureCollection) => {
         if (reqSeq.current.mrds !== seq) return // a newer target/filter change won the race
         src.setData(data)
+        // A small, specific result set → offer a jump-list of the locations.
+        const n = data.features.length
+        setMineList(n >= 1 && n <= MINE_LIST_MAX ? data.features : null)
         const filtered = commodity || depType ? ' (filtered)' : ''
-        setStatus(`MRDS: ${data.features.length.toLocaleString()} sites${filtered}`)
+        setStatus(`MRDS: ${n.toLocaleString()} sites${filtered}`)
       })
       .catch((err) => {
         console.error('MRDS load failed', err)
@@ -1275,6 +1286,22 @@ export default function MapView() {
     wireCopyButton(popup)
   }
 
+  // Fly to a mine from the locations jump-list and open its popup (same detail +
+  // directions as clicking the dot). Mirrors openCellPopup for MRDS point features.
+  function openMinePopup(feature: GeoJSON.Feature) {
+    const map = mapRef.current
+    if (!map || feature.geometry?.type !== 'Point') return
+    const [lon, lat] = feature.geometry.coordinates as [number, number]
+    const lngLat = new maplibregl.LngLat(lon, lat)
+    map.flyTo({ center: [lon, lat], zoom: Math.max(map.getZoom(), 11) })
+    const rows = featureRows((feature.properties ?? {}) as Record<string, unknown>)
+    const popup = new maplibregl.Popup({ maxWidth: '360px', closeButton: true, closeOnClick: true })
+      .setLngLat(lngLat)
+      .setHTML(`<div class="popup"><div class="popup-sec"><h4>MRDS mines</h4><table>${rows}</table></div>${directionsHtml(lngLat)}</div>`)
+      .addTo(map)
+    wireCopyButton(popup)
+  }
+
   function toggleMenu(name: Exclude<OpenMenu, null>) {
     setOpenMenu((cur) => (cur === name ? null : name))
   }
@@ -1282,6 +1309,13 @@ export default function MapView() {
   const finds = LAYERS.filter((l) => l.group === 'finds')
   const land = LAYERS.filter((l) => l.group === 'land')
   const access = LAYERS.filter((l) => l.group === 'access')
+
+  // Human label for the locations jump-list (what the user filtered to).
+  const listLabel = depType
+    ? titleCase(depType)
+    : target.startsWith('commodity:')
+      ? target.slice('commodity:'.length)
+      : (TARGETS.find((t) => t.id === target)?.label ?? 'mines')
 
   return (
     <div className="map-root">
@@ -1563,6 +1597,30 @@ export default function MapView() {
 
       {/* Click-away backdrop for any open bar menu */}
       {openMenu && <div className="backdrop" onClick={() => setOpenMenu(null)} />}
+
+      {/* Locations jump-list — appears when a filter narrows mines to a small set */}
+      {mineList && mineList.length > 0 && (
+        <div className="locations-panel">
+          <div className="loc-head">
+            📍 {mineList.length} {listLabel} location{mineList.length > 1 ? 's' : ''}
+          </div>
+          <ol className="loc-list">
+            {mineList.map((f, i) => {
+              const p = (f.properties ?? {}) as Record<string, unknown>
+              const name = String(p.site_name || p.ftr_name || 'Unnamed site')
+              const sub = String(p.dep_type || p.commod1 || '')
+              return (
+                <li key={i}>
+                  <button className="loc-item" onClick={() => openMinePopup(f)}>
+                    <span className="loc-name">{name}</span>
+                    {sub && <span className="loc-sub">{sub}</span>}
+                  </button>
+                </li>
+              )
+            })}
+          </ol>
+        </div>
+      )}
 
       {/* Persistent land-status disclaimer whenever ownership or claims is shown */}
       {(visible.ownership || visible.claims) && (

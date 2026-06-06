@@ -562,6 +562,75 @@
   background: #e2e8f0;
 }
 
+/* --- Locations jump-list (left, for small filtered mine sets) ------------- */
+.locations-panel {
+  position: absolute;
+  top: 56px;
+  left: 12px;
+  z-index: 3;
+  width: 232px;
+  max-height: 46vh;
+  display: flex;
+  flex-direction: column;
+  padding: 8px 10px;
+  background: rgba(15, 23, 42, 0.94);
+  border: 1px solid #334155;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  color: #e2e8f0;
+}
+
+.loc-head {
+  font: 600 12px system-ui, sans-serif;
+  color: #cbd5e1;
+  margin-bottom: 6px;
+  text-transform: capitalize;
+}
+
+.loc-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+}
+
+.loc-list li {
+  margin: 0;
+}
+
+.loc-item {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  padding: 5px 6px;
+  cursor: pointer;
+}
+
+.loc-item:hover {
+  background: #1e293b;
+}
+
+.loc-name {
+  font: 12px system-ui, sans-serif;
+  color: #e2e8f0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.loc-sub {
+  font: 11px system-ui, sans-serif;
+  color: #94a3b8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* --- Disclaimer chip (bottom-right) --------------------------------------- */
 .disclaimer-chip {
   position: absolute;
