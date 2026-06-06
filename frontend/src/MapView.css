@@ -347,6 +347,114 @@
   margin-bottom: 3px;
 }
 
+/* --- Recommendation engine (Recommend menu + rationale popup) ------------- */
+.rec-run {
+  width: 100%;
+  margin: 2px 0 4px;
+  padding: 8px 10px;
+  background: rgba(63, 143, 95, 0.22);
+  color: #e2e8f0;
+  border: 1px solid #3f8f5f;
+  border-radius: 6px;
+  font: 600 13px system-ui, sans-serif;
+  cursor: pointer;
+}
+
+.rec-run:hover:not(:disabled) {
+  background: rgba(63, 143, 95, 0.34);
+}
+
+.rec-run:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.rec-result {
+  margin: 6px 0 2px;
+  font-size: 12px;
+  color: #cbd5e1;
+  line-height: 1.4;
+}
+
+.rec-clear {
+  margin-top: 8px;
+  background: transparent;
+  color: #93c5fd;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font: 12px system-ui, sans-serif;
+  cursor: pointer;
+}
+
+.rec-clear:hover {
+  background: #1e293b;
+}
+
+/* Rationale section inside the feature popup */
+.rec-sec .rec-sub {
+  margin: 6px 0 2px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #64748b;
+}
+
+.rec-table {
+  width: 100%;
+  border-collapse: collapse;
+  font: 11px/1.3 system-ui, sans-serif;
+}
+
+.rec-table td {
+  padding: 1px 6px 1px 0;
+  vertical-align: top;
+}
+
+.rec-table td:first-child {
+  color: #475569;
+  white-space: nowrap;
+}
+
+.rec-pts {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  color: #0f172a;
+  font-weight: 600;
+}
+
+.rec-band {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 1px 6px;
+  border-radius: 999px;
+  vertical-align: middle;
+}
+
+.rec-band.rec-high {
+  background: #fef08a;
+  color: #713f12;
+}
+
+.rec-band.rec-moderate {
+  background: #fed7aa;
+  color: #7c2d12;
+}
+
+.rec-band.rec-low {
+  background: #e2e8f0;
+  color: #475569;
+}
+
+.rec-foot {
+  margin: 6px 0 0;
+  font-size: 10px;
+  color: #64748b;
+  line-height: 1.4;
+}
+
 /* --- Disclaimer chip (bottom-right) --------------------------------------- */
 .disclaimer-chip {
   position: absolute;

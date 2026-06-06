@@ -471,14 +471,146 @@ function featureRows(props: Record<string, unknown>): string {
     .join('')
 }
 
-function popupHtml(features: maplibregl.MapGeoJSONFeature[]): string {
-  const sections = features
+// Inner HTML for a set of clicked features — one section each. The click handler
+// wraps this in <div class="popup">, optionally prefixed with the engine's
+// rationale section (recommendSectionHtml) when a heat cell is under the click.
+function featureSections(features: maplibregl.MapGeoJSONFeature[]): string {
+  return features
     .map((f) => {
       const label = LAYER_LABEL[f.layer.id] ?? f.layer.id
       return `<div class="popup-sec"><h4>${esc(label)}</h4><table>${featureRows(f.properties ?? {})}</table></div>`
     })
     .join('')
-  return `<div class="popup">${sections}</div>`
+}
+
+// --- Recommendation engine (the v1 "brain") ---------------------------------
+// Calls /engine/score for the current viewport + target and renders the scored
+// grid as a heat surface. Every recommendation must surface the factors that
+// produced it (CLAUDE.md verification rule), so each cell carries its full
+// factor-by-factor breakdown, shown in the click popup.
+type EngineTarget = { id: string; label: string; profile: string }
+type ScoreFactor = {
+  name: string
+  label: string
+  raw: string
+  membership: number
+  weight: number
+  contribution: number
+}
+type ScoreGate = { name: string; gate: number; raw: string }
+type ScoredCell = {
+  lon: number
+  lat: number
+  geometry: string // GeoJSON string (ST_AsGeoJSON)
+  score: number
+  band: string
+  factors: ScoreFactor[]
+  gates: ScoreGate[]
+}
+type ScoreResult = {
+  target: string
+  profile: string
+  cell_size_m: number
+  count: number
+  cells: ScoredCell[]
+}
+
+// "Magma" heat ramp — distinct from every categorical layer on the map; high
+// score reads as bright/hot. score floor is the API's min_score (15).
+function recommendColor(): maplibregl.ExpressionSpecification {
+  return [
+    'interpolate', ['linear'], ['get', 'score'],
+    15, '#3b0f70', 35, '#8c2981', 55, '#de4968', 75, '#fe9f6d', 100, '#fcfdbf',
+  ]
+}
+
+// Layers kept in front of the heat surface (so dots/lines stay visible and
+// clickable on top): every line + point layer. Insert the fill before the first
+// of these that's present, leaving only the polygon fills beneath it.
+const ABOVE_RECOMMEND = [
+  'forests', 'counties', 'streams', 'roads', 'trails', 'faults', 'aml', 'usmin', 'mrds',
+]
+
+function recommendFC(data: ScoreResult, label: string): GeoJSON.FeatureCollection {
+  return {
+    type: 'FeatureCollection',
+    features: data.cells.map((c) => ({
+      type: 'Feature',
+      geometry: JSON.parse(c.geometry) as GeoJSON.Geometry,
+      properties: {
+        score: c.score,
+        band: c.band,
+        target_label: label,
+        // Nested arrays don't survive into queryRenderedFeatures as objects —
+        // stringify so the click handler can JSON.parse them back.
+        factors: JSON.stringify(c.factors),
+        gates: JSON.stringify(c.gates),
+      },
+    })),
+  }
+}
+
+// Size the grid cells to the viewport so the whole view fits under the engine's
+// cell cap. A fixed small cell size over a wide view would score only a corner
+// (score_area grids from the bbox corner and LIMITs). Returns size in meters +
+// whether even the coarsest cell leaves the view partial (a "zoom in" hint).
+const REC_TARGET_CELLS = 2500
+const REC_MAX_CELLS = 3000
+function suggestCellSize(map: maplibregl.Map): { cell: number; partial: boolean } {
+  const b = map.getBounds()
+  const latMid = ((b.getNorth() + b.getSouth()) / 2) * (Math.PI / 180)
+  const mPerDegLat = 111_320
+  const widthM = (b.getEast() - b.getWest()) * mPerDegLat * Math.cos(latMid)
+  const heightM = (b.getNorth() - b.getSouth()) * mPerDegLat
+  const area = Math.abs(widthM * heightM)
+  const cell = Math.max(100, Math.min(1000, Math.round(Math.sqrt(area / REC_TARGET_CELLS))))
+  return { cell, partial: area / (cell * cell) > REC_MAX_CELLS }
+}
+
+const GATE_LABELS: Record<string, string> = {
+  active_claims: 'Active claims',
+  land_ownership: 'Land ownership',
+}
+
+// Render one scored cell's rationale: the factor contributions (already sorted
+// high→low by the API) and the legality gates. This IS the recommendation's
+// evidence — never show a score without it.
+function recommendSectionHtml(props: Record<string, unknown>): string {
+  const score = Number(props.score)
+  const band = String(props.band)
+  const label = String(props.target_label)
+  let factors: ScoreFactor[] = []
+  let gates: ScoreGate[] = []
+  try {
+    factors = JSON.parse(String(props.factors))
+  } catch {
+    /* malformed — show score without the breakdown rather than crash */
+  }
+  try {
+    gates = JSON.parse(String(props.gates))
+  } catch {
+    /* keep empty */
+  }
+  const facRows = factors
+    .map((f) => {
+      const pts = Math.round(f.contribution * 100)
+      return `<tr><td>${esc(f.label)}</td><td>${esc(f.raw)}</td><td class="rec-pts">${pts > 0 ? `+${pts}` : '0'}</td></tr>`
+    })
+    .join('')
+  const gateRows = gates
+    .map(
+      (g) =>
+        `<tr><td>${esc(GATE_LABELS[g.name] ?? g.name)}</td><td>${esc(g.raw)}</td><td class="rec-pts">×${g.gate}</td></tr>`,
+    )
+    .join('')
+  return `<div class="popup-sec rec-sec">
+    <h4>🧭 ${esc(label)} — ${score} / 100 <span class="rec-band rec-${esc(band)}">${esc(band)}</span></h4>
+    <div class="rec-sub">Why — each factor adds points, then access gates multiply:</div>
+    <table class="rec-table">${facRows}</table>
+    <div class="rec-sub">Access gates</div>
+    <table class="rec-table">${gateRows}</table>
+    <div class="rec-foot">Deterministic offline estimate from the mapped data — a starting point, not a guarantee. Verify land status &amp; claims before digging.</div>
+  </div>`
 }
 
 type Facets = { commodities: string[]; deposit_types: string[] }
@@ -719,7 +851,7 @@ const FIELD_GUIDE: GuideCategory[] = [
   },
 ]
 
-type OpenMenu = 'looking' | 'finds' | 'land' | 'access' | 'guide' | 'app' | null
+type OpenMenu = 'looking' | 'recommend' | 'finds' | 'land' | 'access' | 'guide' | 'app' | null
 
 export default function MapView() {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -742,6 +874,11 @@ export default function MapView() {
     closed: true,
     unknown: true,
   })
+  // Recommendation engine (the v1 "brain")
+  const [engineTargets, setEngineTargets] = useState<EngineTarget[]>([])
+  const [engineTarget, setEngineTarget] = useState('au_placer')
+  const [scoring, setScoring] = useState(false)
+  const [recResult, setRecResult] = useState<{ count: number; label: string; partial: boolean } | null>(null)
 
   const resolved = resolveTarget(target)
 
@@ -754,6 +891,15 @@ export default function MapView() {
         console.error('facets load failed', err)
         setStatus(`Could not load filter options — is the API on ${API_BASE}?`)
       })
+  }, [])
+
+  // The engine is self-describing — load the targets it can actually score
+  // (note: gold splits into placer vs lode here, unlike the layer target).
+  useEffect(() => {
+    fetch(`${API_BASE}/engine/targets`)
+      .then((r) => r.json())
+      .then((d: { targets: EngineTarget[] }) => setEngineTargets(d.targets))
+      .catch((err) => console.error('engine targets load failed', err))
   }, [])
 
   // Target (or advanced deposit-type) change → recolor potential + re-query mines.
@@ -907,8 +1053,10 @@ export default function MapView() {
         [e.point.x + b, e.point.y + b],
       ]
       // Only query layers that actually loaded — a layer can be absent if its
-      // source failed to load (see the resilient load loop above).
+      // source failed to load (see the resilient load loop above). The engine
+      // heat layer isn't in LAYERS, so add it explicitly when present.
       const present = LAYERS.map((l) => l.id).filter((id) => map.getLayer(id))
+      if (map.getLayer('recommend')) present.push('recommend')
       const feats = map.queryRenderedFeatures(box, { layers: present })
       if (!feats.length) return
       const order = [
@@ -918,10 +1066,14 @@ export default function MapView() {
       const picked = order
         .map((id) => feats.find((f) => f.layer.id === id))
         .filter((f): f is maplibregl.MapGeoJSONFeature => f !== undefined)
-      if (!picked.length) return
-      new maplibregl.Popup({ maxWidth: '340px', closeButton: true, closeOnClick: true })
+      // The recommendation rationale leads the popup (it's the headline answer),
+      // followed by whatever real features sit under the click.
+      const rec = feats.find((f) => f.layer.id === 'recommend')
+      if (!picked.length && !rec) return
+      const recHtml = rec ? recommendSectionHtml(rec.properties ?? {}) : ''
+      new maplibregl.Popup({ maxWidth: '360px', closeButton: true, closeOnClick: true })
         .setLngLat(e.lngLat)
-        .setHTML(popupHtml(picked))
+        .setHTML(`<div class="popup">${recHtml}${featureSections(picked)}</div>`)
         .addTo(map)
     })
 
@@ -952,6 +1104,72 @@ export default function MapView() {
           .catch((err) => console.error(`refresh of "${id}" failed`, err))
       }
     }
+  }
+
+  // Add (or refresh) the engine heat surface, kept beneath the line/point layers.
+  function ensureRecommendLayer(map: maplibregl.Map, fc: GeoJSON.FeatureCollection) {
+    const src = map.getSource('recommend-src') as maplibregl.GeoJSONSource | undefined
+    if (src) {
+      src.setData(fc)
+      return
+    }
+    const before = ABOVE_RECOMMEND.find((id) => map.getLayer(id))
+    map.addSource('recommend-src', { type: 'geojson', data: fc })
+    map.addLayer(
+      {
+        id: 'recommend',
+        source: 'recommend-src',
+        type: 'fill',
+        paint: {
+          'fill-color': recommendColor(),
+          'fill-opacity': 0.6,
+          'fill-outline-color': 'rgba(15,23,42,0.25)',
+        },
+      },
+      before,
+    )
+  }
+
+  // Score the current viewport for the chosen engine target and render the grid.
+  async function runScore() {
+    const map = mapRef.current
+    if (!map || !ready || scoring) return
+    const t = engineTargets.find((x) => x.id === engineTarget)
+    if (!t) return
+    const { cell, partial } = suggestCellSize(map)
+    const seq = nextReq(reqSeq.current, 'recommend') // ignore a stale result if re-scored
+    setScoring(true)
+    setStatus(`Scoring ${t.label}…`)
+    const url =
+      `${API_BASE}/engine/score?target=${encodeURIComponent(engineTarget)}` +
+      `&bbox=${encodeURIComponent(bboxParam(map))}&cell_size_m=${cell}`
+    try {
+      const r = await fetch(url)
+      if (!r.ok) throw new Error(`${r.status}`)
+      const data = (await r.json()) as ScoreResult
+      if (reqSeq.current.recommend !== seq) return // a newer score won the race
+      ensureRecommendLayer(map, recommendFC(data, t.label))
+      setRecResult({ count: data.count, label: t.label, partial })
+      setStatus(
+        `Recommended ${data.count.toLocaleString()} area(s) for ${t.label}` +
+          (partial ? ' — zoom in for full coverage' : ''),
+      )
+    } catch (err) {
+      console.error('scoring failed', err)
+      setStatus('Scoring failed — is the API reachable?')
+    } finally {
+      if (reqSeq.current.recommend === seq) setScoring(false)
+    }
+  }
+
+  function clearRecommend() {
+    const map = mapRef.current
+    if (!map) return
+    nextReq(reqSeq.current, 'recommend') // invalidate any in-flight score
+    if (map.getLayer('recommend')) map.removeLayer('recommend')
+    if (map.getSource('recommend-src')) map.removeSource('recommend-src')
+    setRecResult(null)
+    setScoring(false)
   }
 
   function toggleMenu(name: Exclude<OpenMenu, null>) {
@@ -1016,7 +1234,49 @@ export default function MapView() {
           )}
         </div>
 
-        {/* 2 — Known finds: where minerals are proven/likely */}
+        {/* 2 — Recommend: the engine grades the current view (the v1 "brain") */}
+        <div className="bar-item">
+          <button className="bar-btn" onClick={() => toggleMenu('recommend')}>
+            🧭 Recommend ▾
+          </button>
+          {openMenu === 'recommend' && (
+            <div className="dropdown wide">
+              <label className="field">
+                <span className="field-label">Score the current view for…</span>
+                <select value={engineTarget} onChange={(e) => setEngineTarget(e.target.value)}>
+                  {engineTargets.map((t) => (
+                    <option key={t.id} value={t.id}>{t.label}</option>
+                  ))}
+                </select>
+              </label>
+              <button
+                className="rec-run"
+                disabled={scoring || !ready || engineTargets.length === 0}
+                onClick={runScore}
+              >
+                {scoring ? 'Scoring…' : '🧭 Score this view'}
+              </button>
+              {recResult && (
+                <div className="rec-result">
+                  <b>{recResult.count.toLocaleString()}</b> area(s) ranked for {recResult.label}.
+                  Click a colored cell to see why.
+                  {recResult.partial && (
+                    <p className="note">Large view — zoom in for finer, full-coverage scoring.</p>
+                  )}
+                  <button className="rec-clear" onClick={clearRecommend}>Clear recommendations</button>
+                </div>
+              )}
+              <p className="guide-foot">
+                The engine grades each patch of the current view by stacking the mapped evidence
+                (water, known mines, structure, geology, land access) into a 0–100 score —
+                deterministic and offline, same inputs give the same answer. Zoom to the area you
+                care about, then score.
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* 3 — Known finds: where minerals are proven/likely */}
         <div className="bar-item">
           <button className="bar-btn" onClick={() => toggleMenu('finds')}>
             Known finds ▾
@@ -1044,7 +1304,7 @@ export default function MapView() {
           )}
         </div>
 
-        {/* 3 — Land & claims: can I legally be / dig here */}
+        {/* 4 — Land & claims: can I legally be / dig here */}
         <div className="bar-item">
           <button className="bar-btn" onClick={() => toggleMenu('land')}>
             Land & claims ▾
@@ -1064,7 +1324,7 @@ export default function MapView() {
           )}
         </div>
 
-        {/* 4 — Access & terrain: getting there + the ground underfoot */}
+        {/* 5 — Access & terrain: getting there + the ground underfoot */}
         <div className="bar-item">
           <button className="bar-btn" onClick={() => toggleMenu('access')}>
             Access & terrain ▾
@@ -1098,7 +1358,7 @@ export default function MapView() {
 
         <span className="status-mini" title={status}>{status}</span>
 
-        {/* 5 — Field guide: non-AI beginner prospecting advice (reference zone) */}
+        {/* 6 — Field guide: non-AI beginner prospecting advice (reference zone) */}
         <div className="bar-item">
           <button className="bar-btn" onClick={() => toggleMenu('guide')}>
             📖 Field guide ▾
@@ -1219,6 +1479,16 @@ export default function MapView() {
           <div className="legend-row">
             <b>Water</b>
             <span><i style={{ background: '#3b82f6' }} />streams &amp; rivers</span>
+          </div>
+        )}
+        {recResult && (
+          <div className="legend-row">
+            <b>Recommend</b>
+            <span title="Engine favorability score (0–100)">
+              <i style={{ background: '#3b0f70' }} />Low
+            </span>
+            <span><i style={{ background: '#de4968' }} />Mod</span>
+            <span><i style={{ background: '#fcfdbf', border: '1px solid #94a3b8' }} />High</span>
           </div>
         )}
       </div>
