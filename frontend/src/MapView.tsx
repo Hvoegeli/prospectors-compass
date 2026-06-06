@@ -607,23 +607,15 @@ const GATE_LABELS: Record<string, string> = {
 
 // Render one scored cell's rationale: the factor contributions (already sorted
 // high→low by the API) and the legality gates. This IS the recommendation's
-// evidence — never show a score without it.
-function recommendSectionHtml(props: Record<string, unknown>): string {
-  const score = Number(props.score)
-  const band = String(props.band)
-  const label = String(props.target_label)
-  let factors: ScoreFactor[] = []
-  let gates: ScoreGate[] = []
-  try {
-    factors = JSON.parse(String(props.factors))
-  } catch {
-    /* malformed — show score without the breakdown rather than crash */
-  }
-  try {
-    gates = JSON.parse(String(props.gates))
-  } catch {
-    /* keep empty */
-  }
+// evidence — never show a score without it. Shared by the click popup (which
+// parses the values out of feature props) and the Top Spots list (raw objects).
+function recommendSection(
+  label: string,
+  score: number,
+  band: string,
+  factors: ScoreFactor[],
+  gates: ScoreGate[],
+): string {
   const facRows = factors
     .map((f) => {
       const pts = Math.round(f.contribution * 100)
@@ -644,6 +636,45 @@ function recommendSectionHtml(props: Record<string, unknown>): string {
     <table class="rec-table">${gateRows}</table>
     <div class="rec-foot">Deterministic offline estimate from the mapped data — a starting point, not a guarantee. Verify land status &amp; claims before digging.</div>
   </div>`
+}
+
+function recommendSectionHtml(props: Record<string, unknown>): string {
+  let factors: ScoreFactor[] = []
+  let gates: ScoreGate[] = []
+  try {
+    factors = JSON.parse(String(props.factors))
+  } catch {
+    /* malformed — show score without the breakdown rather than crash */
+  }
+  try {
+    gates = JSON.parse(String(props.gates))
+  } catch {
+    /* keep empty */
+  }
+  return recommendSection(String(props.target_label), Number(props.score), String(props.band), factors, gates)
+}
+
+// Magma-legend dot per band, matching the heat ramp (high = bright/pale).
+const BAND_DOT: Record<string, string> = { high: '#fcfdbf', moderate: '#de4968', low: '#3b0f70' }
+
+// Pre-fill the engine target from the "Looking for" pick (soft sync — still
+// overridable in the Recommend menu). Gold defaults to placer (lode is one click
+// away); "Anything" / raw commodities have no clean engine target → null (leave
+// the current engine target as-is).
+function lookingToEngineTarget(value: string): string | null {
+  if (value === 'gold') return 'au_placer'
+  if (['silver', 'pegmatite', 'corundum', 'rare_earth', 'fluorite'].includes(value)) return value
+  return null
+}
+
+// Wire a popup's "Copy coordinates" button (inline onclick can't reach app scope).
+function wireCopyButton(popup: maplibregl.Popup): void {
+  const copyBtn = popup.getElement()?.querySelector('.go-copy') as HTMLButtonElement | null
+  if (!copyBtn) return
+  copyBtn.addEventListener('click', () => {
+    void navigator.clipboard?.writeText(copyBtn.dataset.coord ?? '')
+    copyBtn.textContent = 'Copied ✓'
+  })
 }
 
 type Facets = { commodities: string[]; deposit_types: string[] }
@@ -912,7 +943,7 @@ export default function MapView() {
   const [engineTarget, setEngineTarget] = useState('au_placer')
   const [scoring, setScoring] = useState(false)
   const [recResult, setRecResult] = useState<
-    { count: number; label: string; coarse: boolean; partial: boolean } | null
+    { count: number; label: string; coarse: boolean; partial: boolean; spots: ScoredCell[] } | null
   >(null)
 
   const resolved = resolveTarget(target)
@@ -1113,14 +1144,7 @@ export default function MapView() {
         .setLngLat(e.lngLat)
         .setHTML(`<div class="popup">${recHtml}${featureSections(picked)}${directionsHtml(e.lngLat)}</div>`)
         .addTo(map)
-      // Wire the "Copy coordinates" button (inline onclick can't reach app scope).
-      const copyBtn = popup.getElement()?.querySelector('.go-copy') as HTMLButtonElement | null
-      if (copyBtn) {
-        copyBtn.addEventListener('click', () => {
-          void navigator.clipboard?.writeText(copyBtn.dataset.coord ?? '')
-          copyBtn.textContent = 'Copied ✓'
-        })
-      }
+      wireCopyButton(popup)
     })
 
     return () => {
@@ -1205,7 +1229,8 @@ export default function MapView() {
       const data = (await r.json()) as ScoreResult
       if (reqSeq.current.recommend !== seq) return // a newer score won the race
       ensureRecommendLayer(map, recommendFC(data, t.label))
-      setRecResult({ count: data.count, label: t.label, coarse, partial })
+      // cells arrive sorted high→low, so the first few are the top spots.
+      setRecResult({ count: data.count, label: t.label, coarse, partial, spots: data.cells.slice(0, 10) })
       const hint = partial
         ? ' — zoomed out: only part scored, zoom in'
         : coarse
@@ -1228,6 +1253,26 @@ export default function MapView() {
     if (map.getSource('recommend-src')) map.removeSource('recommend-src')
     setRecResult(null)
     setScoring(false)
+  }
+
+  // Fly to a top spot and open its rationale popup (with directions footer) —
+  // turns the ranked list into one-click "go here, here's why, here's the route".
+  function openCellPopup(cell: ScoredCell) {
+    const map = mapRef.current
+    if (!map || !recResult) return
+    setOpenMenu(null) // clear the dropdown so the popup + map aren't obscured
+    const lngLat = new maplibregl.LngLat(cell.lon, cell.lat)
+    map.flyTo({ center: [cell.lon, cell.lat], zoom: Math.max(map.getZoom(), 11) })
+    const html =
+      `<div class="popup">` +
+      recommendSection(recResult.label, cell.score, cell.band, cell.factors, cell.gates) +
+      directionsHtml(lngLat) +
+      `</div>`
+    const popup = new maplibregl.Popup({ maxWidth: '360px', closeButton: true, closeOnClick: true })
+      .setLngLat(lngLat)
+      .setHTML(html)
+      .addTo(map)
+    wireCopyButton(popup)
   }
 
   function toggleMenu(name: Exclude<OpenMenu, null>) {
@@ -1258,8 +1303,11 @@ export default function MapView() {
                 <select
                   value={target}
                   onChange={(e) => {
-                    setTarget(e.target.value)
+                    const v = e.target.value
+                    setTarget(v)
                     enableMrds() // reveal the mines this target points to
+                    const et = lookingToEngineTarget(v) // soft-sync the Recommend target
+                    if (et) setEngineTarget(et)
                   }}
                 >
                   <option value="">Anything (all mines)</option>
@@ -1323,13 +1371,33 @@ export default function MapView() {
               {recResult && (
                 <div className="rec-result">
                   <b>{recResult.count.toLocaleString()}</b> area(s) ranked for {recResult.label}.
-                  Click a colored cell to see why.
+                  Click a spot below (or any colored cell) to fly there and see why.
                   {(recResult.partial || recResult.coarse) && (
                     <p className="note">
                       {recResult.partial
                         ? 'Zoomed out — only part of the view was scored. Zoom in to score it all.'
                         : 'Coarse cells at this zoom — zoom in for finer detail.'}
                     </p>
+                  )}
+                  {recResult.spots.length > 0 && (
+                    <ol className="rec-spot-list">
+                      {recResult.spots.map((c, i) => (
+                        <li key={`${c.lon},${c.lat}`}>
+                          <button className="rec-spot" onClick={() => openCellPopup(c)}>
+                            <span className="rec-spot-rank">{i + 1}</span>
+                            <span
+                              className="rec-spot-dot"
+                              style={{
+                                background: BAND_DOT[c.band] ?? '#888',
+                                border: c.band === 'high' ? '1px solid #94a3b8' : 'none',
+                              }}
+                            />
+                            <span className="rec-spot-score">{c.score}</span>
+                            <span className="rec-spot-why">{c.factors[0]?.raw ?? ''}</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ol>
                   )}
                   <button className="rec-clear" onClick={clearRecommend}>Clear recommendations</button>
                 </div>
