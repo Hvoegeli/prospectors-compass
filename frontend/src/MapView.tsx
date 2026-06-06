@@ -682,6 +682,115 @@ function wireCopyButton(popup: maplibregl.Popup): void {
   })
 }
 
+// --- Trips (saved spots) ----------------------------------------------------
+// A trip is the user's named, editable collection of saved spots, persisted via
+// the local /trips API (free, offline). Each waypoint is a self-contained
+// SNAPSHOT so it survives layer re-ingests and travels offline to the phone; the
+// stable id lets on-site notes merge back on the AirDrop round-trip later.
+type Waypoint = {
+  id: string
+  lon: number
+  lat: number
+  title: string
+  kind: 'engine' | 'mine' | 'manual'
+  details: Record<string, unknown>
+  note: string
+}
+type TripSummary = { id: number; name: string; count: number; created_at: string; updated_at: string }
+type TripFull = { id: number; name: string; waypoints: Waypoint[]; created_at: string; updated_at: string }
+
+const TRIPS_URL = `${API_BASE}/trips`
+async function apiListTrips(): Promise<TripSummary[]> {
+  const r = await fetch(TRIPS_URL)
+  if (!r.ok) throw new Error(`${r.status}`)
+  return r.json()
+}
+async function apiCreateTrip(name: string): Promise<TripFull> {
+  const r = await fetch(TRIPS_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  })
+  if (!r.ok) throw new Error(`${r.status}`)
+  return r.json()
+}
+async function apiGetTrip(id: number): Promise<TripFull> {
+  const r = await fetch(`${TRIPS_URL}/${id}`)
+  if (!r.ok) throw new Error(`${r.status}`)
+  return r.json()
+}
+async function apiUpdateTrip(id: number, patch: { name?: string; waypoints?: Waypoint[] }): Promise<TripFull> {
+  const r = await fetch(`${TRIPS_URL}/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  })
+  if (!r.ok) throw new Error(`${r.status}`)
+  return r.json()
+}
+async function apiDeleteTrip(id: number): Promise<void> {
+  const r = await fetch(`${TRIPS_URL}/${id}`, { method: 'DELETE' })
+  if (!r.ok) throw new Error(`${r.status}`)
+}
+
+// Stable id for a new waypoint (kept across the future AirDrop round-trip).
+function newWaypointId(): string {
+  return typeof crypto !== 'undefined' && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `wp-${Date.now()}-${Math.round(Math.random() * 1e6)}`
+}
+
+function cellWaypoint(
+  label: string, lon: number, lat: number,
+  score: number, band: string, factors: ScoreFactor[], gates: ScoreGate[],
+): Waypoint {
+  return {
+    id: newWaypointId(), lon, lat,
+    title: `${label} · score ${score}`, kind: 'engine',
+    details: { score, band, factors, gates }, note: '',
+  }
+}
+function featureWaypoint(props: Record<string, unknown>, lon: number, lat: number): Waypoint {
+  const title = String(props.site_name || props.ftr_name || props.district || props.name || 'Saved spot')
+  return { id: newWaypointId(), lon, lat, title, kind: 'mine', details: { ...props }, note: '' }
+}
+
+// Decide the single "subject" of a popup so it can be saved to a trip: the engine
+// cell if one's under the click, else the top point feature, else a plain pin.
+function buildClickWaypoint(
+  rec: maplibregl.MapGeoJSONFeature | undefined,
+  feat: maplibregl.MapGeoJSONFeature | undefined,
+  lngLat: maplibregl.LngLat,
+): Waypoint | null {
+  if (rec) {
+    let factors: ScoreFactor[] = []
+    let gates: ScoreGate[] = []
+    try { factors = JSON.parse(String(rec.properties?.factors)) } catch { /* keep empty */ }
+    try { gates = JSON.parse(String(rec.properties?.gates)) } catch { /* keep empty */ }
+    return cellWaypoint(
+      String(rec.properties?.target_label ?? 'Spot'), lngLat.lng, lngLat.lat,
+      Number(rec.properties?.score), String(rec.properties?.band), factors, gates,
+    )
+  }
+  if (feat) {
+    const g = feat.geometry
+    const [lon, lat] = g && g.type === 'Point' ? (g.coordinates as [number, number]) : [lngLat.lng, lngLat.lat]
+    return featureWaypoint(feat.properties ?? {}, lon, lat)
+  }
+  return null
+}
+
+// The "➕ Add to trip" control injected into spot popups (button + trip picker).
+function addTripControlHtml(trips: TripSummary[], activeId: number | null): string {
+  const opts = trips
+    .map((t) => `<option value="${t.id}"${t.id === activeId ? ' selected' : ''}>${esc(t.name)}</option>`)
+    .join('')
+  return `<div class="addtrip">
+    <button class="addtrip-btn">➕ Add to trip</button>
+    <select class="addtrip-sel" title="Which trip">${opts}<option value="__new__">＋ New trip…</option></select>
+  </div>`
+}
+
 type Facets = { commodities: string[]; deposit_types: string[] }
 
 // Heavy layers load by viewport (bbox). MRDS skips bbox when commodity-filtered
@@ -920,7 +1029,7 @@ const FIELD_GUIDE: GuideCategory[] = [
   },
 ]
 
-type OpenMenu = 'looking' | 'recommend' | 'finds' | 'land' | 'access' | 'guide' | 'app' | null
+type OpenMenu = 'looking' | 'recommend' | 'finds' | 'land' | 'access' | 'trips' | 'guide' | 'app' | null
 
 export default function MapView() {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -952,6 +1061,17 @@ export default function MapView() {
   >(null)
   // Small filtered mine sets (≤ MINE_LIST_MAX) → a clickable jump-list of locations.
   const [mineList, setMineList] = useState<GeoJSON.Feature[] | null>(null)
+  // Trips (saved spots). Refs mirror state so the once-registered map-click
+  // handler always reads the current trip when it wires popups / opens pins.
+  const [trips, setTrips] = useState<TripSummary[]>([])
+  const [activeTripId, setActiveTripId] = useState<number | null>(null)
+  const [activeTrip, setActiveTrip] = useState<TripFull | null>(null)
+  const [renaming, setRenaming] = useState(false)
+  const tripsRef = useRef<TripSummary[]>([])
+  const activeTripIdRef = useRef<number | null>(null)
+  const activeTripRef = useRef<TripFull | null>(null)
+  const openWaypointRef = useRef<(wp: Waypoint) => void>(() => {})
+  const wireAddTripRef = useRef<(p: maplibregl.Popup, wp: Waypoint) => void>(() => {})
 
   const resolved = resolveTarget(target)
 
@@ -974,6 +1094,34 @@ export default function MapView() {
       .then((d: { targets: EngineTarget[] }) => setEngineTargets(d.targets))
       .catch((err) => console.error('engine targets load failed', err))
   }, [])
+
+  // Load trips on mount; restore the last active trip (persisted in localStorage).
+  useEffect(() => {
+    void (async () => {
+      const list = await refreshTrips()
+      const saved = Number(localStorage.getItem('pc-active-trip') || '')
+      await selectTrip(list.find((t) => t.id === saved)?.id ?? list[0]?.id ?? null)
+    })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Mirror trip state into refs (the once-registered map-click handler reads them).
+  useEffect(() => {
+    tripsRef.current = trips
+  }, [trips])
+  useEffect(() => {
+    activeTripIdRef.current = activeTripId
+    if (activeTripId != null) localStorage.setItem('pc-active-trip', String(activeTripId))
+  }, [activeTripId])
+  useEffect(() => {
+    activeTripRef.current = activeTrip
+    renderWaypointPins(activeTrip)
+  }, [activeTrip])
+  // Keep the click handler's callbacks current (latest-ref pattern; every render).
+  useEffect(() => {
+    openWaypointRef.current = openWaypointPopup
+    wireAddTripRef.current = wireAddTrip
+  })
 
   // Target (or advanced deposit-type) change → recolor potential + re-query mines.
   useEffect(() => {
@@ -1100,6 +1248,24 @@ export default function MapView() {
           continue
         }
       }
+      // Saved-trip waypoint pins (user data) — added last so they sit on top and
+      // stay clickable; data is set from the active trip by its effect.
+      if (!cancelled && !map.getLayer('trip-waypoints')) {
+        map.addSource('trip-waypoints-src', { type: 'geojson', data: EMPTY_FC })
+        map.addLayer({
+          id: 'trip-waypoints',
+          source: 'trip-waypoints-src',
+          type: 'circle',
+          paint: {
+            'circle-radius': 6,
+            'circle-color': ['case', ['get', 'hasNote'], '#fbbf24', '#ffffff'],
+            'circle-stroke-color': '#db2777',
+            'circle-stroke-width': 3,
+          },
+        })
+        renderWaypointPins(activeTripRef.current)
+      }
+
       // Pin the view to the mapped area — can't pan or zoom out past it. Derived
       // from the counties extent, so adding counties widens the bounds for free.
       if (countiesData && countiesData.features.length) {
@@ -1137,8 +1303,18 @@ export default function MapView() {
       // heat layer isn't in LAYERS, so add it explicitly when present.
       const present = LAYERS.map((l) => l.id).filter((id) => map.getLayer(id))
       if (map.getLayer('recommend')) present.push('recommend')
+      if (map.getLayer('trip-waypoints')) present.push('trip-waypoints')
       const feats = map.queryRenderedFeatures(box, { layers: present })
       if (!feats.length) return
+      // A saved-spot pin wins: open its waypoint popup (details + editable note).
+      const pin = feats.find((f) => f.layer.id === 'trip-waypoints')
+      if (pin) {
+        const wp = activeTripRef.current?.waypoints.find((w) => w.id === String(pin.properties?.wpId))
+        if (wp) {
+          openWaypointRef.current(wp)
+          return
+        }
+      }
       const order = [
         'mrds', 'usmin', 'aml', 'districts', 'claims', 'potential',
         'roads', 'trails', 'streams', 'geology', 'ownership', 'forests', 'counties',
@@ -1151,11 +1327,15 @@ export default function MapView() {
       const rec = feats.find((f) => f.layer.id === 'recommend')
       if (!picked.length && !rec) return
       const recHtml = rec ? recommendSectionHtml(rec.properties ?? {}) : ''
+      // Let the click's primary subject be saved to a trip.
+      const wp = buildClickWaypoint(rec, picked[0], e.lngLat)
+      const addHtml = wp ? addTripControlHtml(tripsRef.current, activeTripIdRef.current) : ''
       const popup = new maplibregl.Popup({ maxWidth: '360px', closeButton: true, closeOnClick: true })
         .setLngLat(e.lngLat)
-        .setHTML(`<div class="popup">${recHtml}${featureSections(picked)}${directionsHtml(e.lngLat)}</div>`)
+        .setHTML(`<div class="popup">${recHtml}${featureSections(picked)}${addHtml}${directionsHtml(e.lngLat)}</div>`)
         .addTo(map)
       wireCopyButton(popup)
+      if (wp) wireAddTripRef.current(popup, wp)
     })
 
     return () => {
@@ -1274,9 +1454,11 @@ export default function MapView() {
     setOpenMenu(null) // clear the dropdown so the popup + map aren't obscured
     const lngLat = new maplibregl.LngLat(cell.lon, cell.lat)
     map.flyTo({ center: [cell.lon, cell.lat], zoom: Math.max(map.getZoom(), 11) })
+    const wp = cellWaypoint(recResult.label, cell.lon, cell.lat, cell.score, cell.band, cell.factors, cell.gates)
     const html =
       `<div class="popup">` +
       recommendSection(recResult.label, cell.score, cell.band, cell.factors, cell.gates) +
+      addTripControlHtml(trips, activeTripId) +
       directionsHtml(lngLat) +
       `</div>`
     const popup = new maplibregl.Popup({ maxWidth: '360px', closeButton: true, closeOnClick: true })
@@ -1284,6 +1466,7 @@ export default function MapView() {
       .setHTML(html)
       .addTo(map)
     wireCopyButton(popup)
+    wireAddTrip(popup, wp)
   }
 
   // Fly to a mine from the locations jump-list and open its popup (same detail +
@@ -1294,12 +1477,189 @@ export default function MapView() {
     const [lon, lat] = feature.geometry.coordinates as [number, number]
     const lngLat = new maplibregl.LngLat(lon, lat)
     map.flyTo({ center: [lon, lat], zoom: Math.max(map.getZoom(), 11) })
-    const rows = featureRows((feature.properties ?? {}) as Record<string, unknown>)
+    const props = (feature.properties ?? {}) as Record<string, unknown>
+    const wp = featureWaypoint(props, lon, lat)
+    const rows = featureRows(props)
     const popup = new maplibregl.Popup({ maxWidth: '360px', closeButton: true, closeOnClick: true })
       .setLngLat(lngLat)
-      .setHTML(`<div class="popup"><div class="popup-sec"><h4>MRDS mines</h4><table>${rows}</table></div>${directionsHtml(lngLat)}</div>`)
+      .setHTML(
+        `<div class="popup"><div class="popup-sec"><h4>MRDS mines</h4><table>${rows}</table></div>` +
+          addTripControlHtml(trips, activeTripId) +
+          directionsHtml(lngLat) +
+          `</div>`,
+      )
       .addTo(map)
     wireCopyButton(popup)
+    wireAddTrip(popup, wp)
+  }
+
+  // --- Trips: load, mutate, render -------------------------------------------
+  async function refreshTrips(): Promise<TripSummary[]> {
+    try {
+      const list = await apiListTrips()
+      setTrips(list)
+      return list
+    } catch (err) {
+      console.error('trips load failed', err)
+      return []
+    }
+  }
+
+  async function selectTrip(id: number | null): Promise<void> {
+    setActiveTripId(id)
+    setRenaming(false) // don't carry an open rename box across a trip switch
+    if (id == null) {
+      setActiveTrip(null)
+      return
+    }
+    try {
+      setActiveTrip(await apiGetTrip(id))
+    } catch (err) {
+      console.error('trip load failed', err)
+      setActiveTrip(null)
+    }
+  }
+
+  async function createNewTrip(): Promise<void> {
+    try {
+      const t = await apiCreateTrip('Untitled trip')
+      await refreshTrips()
+      setActiveTripId(t.id)
+      setActiveTrip(t)
+      setRenaming(true) // jump straight to naming it
+    } catch (err) {
+      console.error('trip create failed', err)
+    }
+  }
+
+  // Append a waypoint to a trip (creating one if none), via the API. Used by the
+  // "➕ Add to trip" popup control; target trip comes from the control's picker.
+  async function addWaypointTo(tripId: number | null, wp: Waypoint): Promise<void> {
+    let id = tripId
+    let current: Waypoint[] = []
+    if (id == null) {
+      id = (await apiCreateTrip('Untitled trip')).id
+    } else {
+      try {
+        current = (await apiGetTrip(id)).waypoints
+      } catch {
+        current = []
+      }
+    }
+    const updated = await apiUpdateTrip(id, { waypoints: [...current, wp] })
+    await refreshTrips()
+    setActiveTripId(id)
+    setActiveTrip(updated)
+  }
+
+  async function removeWaypoint(wpId: string): Promise<void> {
+    const t = activeTripRef.current
+    if (!t) return
+    setActiveTrip(await apiUpdateTrip(t.id, { waypoints: t.waypoints.filter((w) => w.id !== wpId) }))
+    await refreshTrips()
+  }
+
+  async function saveWaypointNote(wpId: string, note: string): Promise<void> {
+    const t = activeTripRef.current
+    if (!t) return
+    setActiveTrip(
+      await apiUpdateTrip(t.id, {
+        waypoints: t.waypoints.map((w) => (w.id === wpId ? { ...w, note } : w)),
+      }),
+    )
+    await refreshTrips()
+  }
+
+  async function renameActiveTrip(name: string): Promise<void> {
+    const t = activeTripRef.current
+    if (!t || !name.trim()) return
+    setActiveTrip(await apiUpdateTrip(t.id, { name: name.trim() }))
+    await refreshTrips()
+  }
+
+  async function deleteActiveTrip(): Promise<void> {
+    const t = activeTripRef.current
+    if (!t) return
+    await apiDeleteTrip(t.id)
+    const list = await refreshTrips()
+    await selectTrip(list[0]?.id ?? null)
+  }
+
+  // Paint the active trip's waypoints as pins (amber fill = has a note).
+  function renderWaypointPins(trip: TripFull | null): void {
+    const map = mapRef.current
+    const src = map?.getSource('trip-waypoints-src') as maplibregl.GeoJSONSource | undefined
+    if (!src) return
+    src.setData({
+      type: 'FeatureCollection',
+      features: (trip?.waypoints ?? []).map((w) => ({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [w.lon, w.lat] },
+        properties: { wpId: w.id, hasNote: Boolean(w.note && w.note.trim()) },
+      })),
+    })
+  }
+
+  // Open a saved waypoint's popup: its details/rationale + an editable note +
+  // remove, with the directions footer. Used by pin clicks and the trip list.
+  function openWaypointPopup(wp: Waypoint): void {
+    const map = mapRef.current
+    if (!map) return
+    const lngLat = new maplibregl.LngLat(wp.lon, wp.lat)
+    map.flyTo({ center: [wp.lon, wp.lat], zoom: Math.max(map.getZoom(), 11) })
+    const body =
+      wp.kind === 'engine'
+        ? recommendSection(
+            wp.title, Number(wp.details.score), String(wp.details.band),
+            (wp.details.factors as ScoreFactor[]) ?? [], (wp.details.gates as ScoreGate[]) ?? [],
+          )
+        : `<div class="popup-sec"><h4>${esc(wp.title)}</h4><table>${featureRows(wp.details)}</table></div>`
+    const noteSec = `<div class="popup-sec wp-notesec">
+      <div class="rec-sub">📝 Your notes</div>
+      <textarea class="wp-note" rows="3" placeholder="Add a note…">${esc(wp.note ?? '')}</textarea>
+      <div class="wp-actions"><button class="wp-note-save">Save note</button><button class="wp-remove">Remove from trip</button></div>
+    </div>`
+    const popup = new maplibregl.Popup({ maxWidth: '360px', closeButton: true, closeOnClick: true })
+      .setLngLat(lngLat)
+      .setHTML(`<div class="popup">${body}${noteSec}${directionsHtml(lngLat)}</div>`)
+      .addTo(map)
+    wireCopyButton(popup)
+    const root = popup.getElement()
+    const ta = root?.querySelector('.wp-note') as HTMLTextAreaElement | null
+    const saveBtn = root?.querySelector('.wp-note-save') as HTMLButtonElement | null
+    const rmBtn = root?.querySelector('.wp-remove') as HTMLButtonElement | null
+    if (saveBtn && ta) {
+      saveBtn.addEventListener('click', () => {
+        void saveWaypointNote(wp.id, ta.value)
+        saveBtn.textContent = 'Saved ✓'
+      })
+    }
+    if (rmBtn) {
+      rmBtn.addEventListener('click', () => {
+        void removeWaypoint(wp.id)
+        popup.remove()
+      })
+    }
+  }
+
+  // Wire the "➕ Add to trip" control's button (the picker is read at click time).
+  function wireAddTrip(popup: maplibregl.Popup, wp: Waypoint): void {
+    const root = popup.getElement()
+    const btn = root?.querySelector('.addtrip-btn') as HTMLButtonElement | null
+    const sel = root?.querySelector('.addtrip-sel') as HTMLSelectElement | null
+    if (!btn) return
+    btn.addEventListener('click', async () => {
+      btn.disabled = true
+      const target = sel && sel.value !== '__new__' ? Number(sel.value) : sel ? null : activeTripIdRef.current
+      try {
+        await addWaypointTo(target, wp)
+        btn.textContent = 'Added ✓'
+      } catch (err) {
+        console.error('add to trip failed', err)
+        btn.textContent = 'Failed'
+        btn.disabled = false
+      }
+    })
   }
 
   function toggleMenu(name: Exclude<OpenMenu, null>) {
@@ -1526,6 +1886,104 @@ export default function MapView() {
           )}
         </div>
 
+        {/* 6 — Trips: the user's saved spots (create / switch / edit / revisit) */}
+        <div className="bar-item">
+          <button className="bar-btn" onClick={() => toggleMenu('trips')}>
+            🎒 Trips ▾
+          </button>
+          {openMenu === 'trips' && (
+            <div className="dropdown wide">
+              <label className="field">
+                <span className="field-label">Active trip</span>
+                <select
+                  value={activeTripId ?? ''}
+                  onChange={(e) => {
+                    const v = e.target.value
+                    if (v === '__new__') void createNewTrip()
+                    else void selectTrip(v ? Number(v) : null)
+                  }}
+                >
+                  {trips.length === 0 && <option value="">No trips yet</option>}
+                  {trips.map((t) => (
+                    <option key={t.id} value={t.id}>{t.name} ({t.count})</option>
+                  ))}
+                  <option value="__new__">＋ New trip…</option>
+                </select>
+              </label>
+
+              {activeTrip && (
+                <>
+                  <div className="trip-head">
+                    {renaming ? (
+                      <input
+                        className="trip-name-input"
+                        autoFocus
+                        defaultValue={activeTrip.name}
+                        onBlur={(e) => {
+                          void renameActiveTrip(e.target.value)
+                          setRenaming(false)
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+                        }}
+                      />
+                    ) : (
+                      <button className="trip-name" onClick={() => setRenaming(true)} title="Rename">
+                        {activeTrip.name} ✏️
+                      </button>
+                    )}
+                  </div>
+
+                  {activeTrip.waypoints.length === 0 ? (
+                    <p className="trip-empty">
+                      No spots yet. Click a mine, an engine Top Spot, or a location, then use
+                      “➕ Add to trip”.
+                    </p>
+                  ) : (
+                    <ol className="trip-wps">
+                      {activeTrip.waypoints.map((w) => (
+                        <li key={w.id}>
+                          <button
+                            className="trip-wp"
+                            onClick={() => {
+                              setOpenMenu(null)
+                              openWaypointPopup(w)
+                            }}
+                          >
+                            <span className="trip-wp-title">
+                              {w.note && w.note.trim() ? '📝 ' : ''}
+                              {w.title}
+                            </span>
+                          </button>
+                          <button
+                            className="trip-wp-rm"
+                            title="Remove from trip"
+                            onClick={() => void removeWaypoint(w.id)}
+                          >
+                            ✕
+                          </button>
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+
+                  <div className="trip-foot">
+                    <button
+                      className="trip-del"
+                      onClick={() => {
+                        if (confirm(`Delete trip “${activeTrip.name}”?`)) void deleteActiveTrip()
+                      }}
+                    >
+                      Delete trip
+                    </button>
+                    <span className="trip-soon">📲 Transfer to phone — soon</span>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+
         <span className="status-mini" title={status}>{status}</span>
 
         {/* 6 — Field guide: non-AI beginner prospecting advice (reference zone) */}
@@ -1683,6 +2141,13 @@ export default function MapView() {
             </span>
             <span><i style={{ background: '#de4968' }} />Mod</span>
             <span><i style={{ background: '#fcfdbf', border: '1px solid #94a3b8' }} />High</span>
+          </div>
+        )}
+        {activeTrip && activeTrip.waypoints.length > 0 && (
+          <div className="legend-row">
+            <b>Trip</b>
+            <span><i style={{ background: '#ffffff', border: '2px solid #db2777' }} />saved spot</span>
+            <span><i style={{ background: '#fbbf24', border: '2px solid #db2777' }} />has note</span>
           </div>
         )}
       </div>

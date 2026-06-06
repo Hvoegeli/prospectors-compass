@@ -631,6 +631,217 @@
   white-space: nowrap;
 }
 
+/* --- Trips menu ------------------------------------------------------------ */
+.trip-head {
+  margin: 8px 0 4px;
+}
+
+.trip-name {
+  background: transparent;
+  border: none;
+  color: #e2e8f0;
+  font: 600 14px system-ui, sans-serif;
+  cursor: pointer;
+  padding: 2px 0;
+}
+
+.trip-name:hover {
+  color: #93c5fd;
+}
+
+.trip-name-input {
+  width: 100%;
+  background: #1e293b;
+  color: #e2e8f0;
+  border: 1px solid #3f8f5f;
+  border-radius: 4px;
+  padding: 4px 6px;
+  font: 600 14px system-ui, sans-serif;
+}
+
+.trip-empty {
+  margin: 6px 0;
+  font-size: 12px;
+  color: #94a3b8;
+  line-height: 1.4;
+}
+
+.trip-wps {
+  list-style: none;
+  margin: 6px 0;
+  padding: 0;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.trip-wps li {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.trip-wp {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  background: transparent;
+  border: none;
+  color: #cbd5e1;
+  font: 12px system-ui, sans-serif;
+  padding: 5px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.trip-wp:hover {
+  background: #1e293b;
+}
+
+.trip-wp-title {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trip-wp-rm {
+  flex-shrink: 0;
+  background: transparent;
+  border: none;
+  color: #64748b;
+  font-size: 13px;
+  cursor: pointer;
+  padding: 2px 5px;
+  border-radius: 4px;
+}
+
+.trip-wp-rm:hover {
+  background: #422;
+  color: #fca5a5;
+}
+
+.trip-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid #334155;
+}
+
+.trip-del {
+  background: transparent;
+  border: 1px solid #7f1d1d;
+  color: #fca5a5;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font: 12px system-ui, sans-serif;
+  cursor: pointer;
+}
+
+.trip-del:hover {
+  background: rgba(127, 29, 29, 0.3);
+}
+
+.trip-soon {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #64748b;
+}
+
+/* "➕ Add to trip" control inside spot popups */
+.addtrip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.addtrip-btn {
+  background: #ecfdf5;
+  color: #065f46;
+  border: 1px solid #6ee7b7;
+  border-radius: 4px;
+  padding: 3px 8px;
+  font: 600 12px system-ui, sans-serif;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.addtrip-btn:hover:not(:disabled) {
+  background: #d1fae5;
+}
+
+.addtrip-btn:disabled {
+  opacity: 0.7;
+  cursor: default;
+}
+
+.addtrip-sel {
+  flex: 1;
+  min-width: 0;
+  background: #fff;
+  color: #0f172a;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  padding: 3px 4px;
+  font: 12px system-ui, sans-serif;
+}
+
+/* Editable note in a saved-waypoint popup */
+.wp-notesec .wp-note {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  padding: 4px 6px;
+  font: 12px/1.4 system-ui, sans-serif;
+  /* Force a light field: without these, macOS dark mode gives the textarea a
+     dark default background, making the dark note text unreadable. */
+  background: #ffffff;
+  color: #0f172a;
+  color-scheme: light;
+}
+
+.wp-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.wp-note-save {
+  background: #ecfdf5;
+  color: #065f46;
+  border: 1px solid #6ee7b7;
+  border-radius: 4px;
+  padding: 3px 8px;
+  font: 600 12px system-ui, sans-serif;
+  cursor: pointer;
+}
+
+.wp-note-save:hover {
+  background: #d1fae5;
+}
+
+.wp-remove {
+  background: transparent;
+  color: #b91c1c;
+  border: 1px solid #fca5a5;
+  border-radius: 4px;
+  padding: 3px 8px;
+  font: 12px system-ui, sans-serif;
+  cursor: pointer;
+}
+
+.wp-remove:hover {
+  background: #fef2f2;
+}
+
 /* --- Disclaimer chip (bottom-right) --------------------------------------- */
 .disclaimer-chip {
   position: absolute;

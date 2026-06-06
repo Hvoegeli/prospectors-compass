@@ -6,8 +6,11 @@ All geometries are stored in SRID 4326 (WGS84 lat/lon) — the project standard
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from geoalchemy2 import Geometry
-from sqlalchemy import Float, Integer, String
+from sqlalchemy import DateTime, Float, Integer, String, func
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from prospector.db.base import Base
@@ -373,11 +376,12 @@ class Stream(Base):
     """A natural stream / river / creek flowline (USGS NHD), clipped to the focus area.
 
     Source: USGS National Hydrography Dataset (NHD), high-resolution Flowline
-    (TNM `nhd/MapServer/6`), filtered to PERENNIAL MAIN channels (FType 460
-    StreamRiver, fcode 46006 + a visibility-filter threshold) — gold panning
-    needs year-round water, so seasonal and capillary streams are dropped. Placer
-    gold concentrates in drainages, so trace a creek downhill from a lode/district
-    to find where to pan. Pairs with the HUC12 `watersheds` (basins) and the
+    (TNM `nhd/MapServer/6`), filtered to PERENNIAL MAIN channels (fcode 46006
+    StreamRiver for narrow reaches + fcode 55800 ArtificialPath for the wide
+    river main stems, with a visibility-filter threshold) — gold panning needs
+    year-round water, so seasonal and capillary streams are dropped. Placer gold
+    concentrates in drainages, so trace a creek downhill from a lode/district to
+    find where to pan. Pairs with the HUC12 `watersheds` (basins) and the
     field-guide placer advice. (`flow_type` is "Perennial" for all v1 rows.)
 
     Coverage layer; re-ingest scoped by `state_fips`. License: public domain
@@ -417,4 +421,32 @@ class Fault(Base):
     state_fips: Mapped[str] = mapped_column(String(2), nullable=False, index=True)
     geom: Mapped[object] = mapped_column(
         Geometry(geometry_type="MULTILINESTRING", srid=WGS84, spatial_index=True)
+    )
+
+
+class Trip(Base):
+    """A user-created prospecting trip: a named, editable collection of saved
+    spots (waypoints) the user wants to visit.
+
+    Unlike the ingested layers, this is *user* data, not downloaded source data —
+    so no county/state scoping and no PostGIS geometry. Each waypoint is a
+    self-contained SNAPSHOT stored in JSONB: ``{id, lon, lat, title, kind,
+    details, note}``. Snapshots (not live links to the layers) keep a trip
+    durable and offline-portable — it renders without re-querying and survives
+    layer re-ingests. This is the unit the phone export carries into the field;
+    the stable per-waypoint ``id`` lets on-site notes merge back on AirDrop
+    import. ``updated_at`` supports "newer wins" when reconciling.
+    """
+
+    __tablename__ = "trips"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    #: Waypoint snapshots: [{id, lon, lat, title, kind, details, note}, ...].
+    waypoints: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
