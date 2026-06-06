@@ -56,6 +56,12 @@ const LAYERS: LayerInfo[] = [
   { id: 'mrds', label: 'MRDS mines', group: 'finds' },
 ]
 
+// Layers visible at startup — kept to orientation + access so the map opens
+// clean (the heavy colored fills and target/safety overlays are opt-in). All
+// layers are still loaded and toggleable; this only controls initial visibility.
+// MRDS mines start off but auto-enable when a target is picked (see enableMrds).
+const DEFAULT_ON = new Set(['ownership', 'streams', 'roads', 'trails', 'counties'])
+
 // --- Unified "what are you looking for?" target -----------------------------
 // Each curated target lights up whatever evidence exists for it: a mineral-
 // potential favorability column (CGS) and/or a known-mine commodity (MRDS).
@@ -885,7 +891,7 @@ export default function MapView() {
   const mapRef = useRef<maplibregl.Map | null>(null)
   const reqSeq = useRef<Record<string, number>>({}) // per-source request counter (race guard)
   const [visible, setVisible] = useState<Record<string, boolean>>(
-    Object.fromEntries(LAYERS.map((l) => [l.id, true])),
+    Object.fromEntries(LAYERS.map((l) => [l.id, DEFAULT_ON.has(l.id)])),
   )
   const [status, setStatus] = useState('Loading layers…')
   const [facets, setFacets] = useState<Facets>({ commodities: [], deposit_types: [] })
@@ -1040,6 +1046,9 @@ export default function MapView() {
           const srcData = id === 'aml' ? tagClosure(data) : data
           map.addSource(`${id}-src`, { type: 'geojson', data: srcData })
           map.addLayer(layerSpec(id))
+          // Loaded but opt-in: hidden at startup unless it's an orientation/access
+          // layer. toggle() / enableMrds() flip these on (and refresh bbox layers).
+          if (!DEFAULT_ON.has(id)) map.setLayoutProperty(id, 'visibility', 'none')
           loaded += data.features.length
         } catch (err) {
           // One layer failing (e.g. a source not yet ingested) shouldn't blank
@@ -1143,6 +1152,16 @@ export default function MapView() {
     }
   }
 
+  // Picking a target should reveal the mines it points to — auto-enable the MRDS
+  // layer (it starts hidden for a clean map). Idempotent; the target effect does
+  // the data fetch, so we only flip visibility here.
+  function enableMrds() {
+    const map = mapRef.current
+    if (!map || !map.getLayer('mrds')) return
+    map.setLayoutProperty('mrds', 'visibility', 'visible')
+    setVisible((v) => (v.mrds ? v : { ...v, mrds: true }))
+  }
+
   // Add (or refresh) the engine heat surface, kept beneath the line/point layers.
   function ensureRecommendLayer(map: maplibregl.Map, fc: GeoJSON.FeatureCollection) {
     const src = map.getSource('recommend-src') as maplibregl.GeoJSONSource | undefined
@@ -1236,7 +1255,13 @@ export default function MapView() {
             <div className="dropdown wide">
               <label className="field">
                 <span className="field-label">What are you looking for?</span>
-                <select value={target} onChange={(e) => setTarget(e.target.value)}>
+                <select
+                  value={target}
+                  onChange={(e) => {
+                    setTarget(e.target.value)
+                    enableMrds() // reveal the mines this target points to
+                  }}
+                >
                   <option value="">Anything (all mines)</option>
                   <optgroup label="Targets">
                     {TARGETS.map((t) => (
