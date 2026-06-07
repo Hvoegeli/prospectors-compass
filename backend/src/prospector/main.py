@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from prospector.api import engine, layers, trips
+from prospector.api import engine, land_status, layers, trips
 from prospector.config import settings
 from prospector.db.base import engine as db_engine
 from prospector.db.models import Trip
@@ -35,6 +35,7 @@ app.add_middleware(
 app.include_router(layers.router)
 app.include_router(engine.router)
 app.include_router(trips.router)
+app.include_router(land_status.router)
 
 
 @app.get("/health")

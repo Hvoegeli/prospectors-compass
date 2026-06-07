@@ -69,3 +69,7 @@ logs/
 
 # === Eval cache ===
 evals/_snapshots_cache/
+
+# === Local design / demo docs (never committed) ===
+mockups/
+DEMO-SCRIPT.md

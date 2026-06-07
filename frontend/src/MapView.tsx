@@ -605,6 +605,53 @@ function directionsHtml(lngLat: maplibregl.LngLat): string {
   </div>`
 }
 
+// --- Land status (tap-to-identify ownership) --------------------------------
+// "Who manages the ground under this click?" Answered by the /land-status
+// endpoint, which attaches the disclaimer SERVER-SIDE (never optional, per
+// CLAUDE.md). PAD-US maps public land; a point in no parcel reads honestly as
+// "private or unmapped". This is informational only — never a go/no-go call.
+type LandParcel = {
+  manager_name: string | null
+  manager_type: string | null
+  owner_type: string | null
+  unit_name: string | null
+  public_access: string | null
+  as_of_date: string | null
+  access_label: string
+  is_public: boolean | null
+}
+type LandStatus = {
+  lon: number
+  lat: number
+  on_public_land: boolean
+  parcels: LandParcel[]
+  summary: string
+  disclaimer: string
+}
+async function apiLandStatus(lon: number, lat: number): Promise<LandStatus> {
+  const r = await fetch(`${API_BASE}/land-status?lon=${lon}&lat=${lat}`)
+  if (!r.ok) throw new Error(`${r.status}`)
+  return r.json()
+}
+
+function landStatusSectionHtml(ls: LandStatus): string {
+  // Match the parcel the backend summary headlines: the public one when on
+  // public land (parcels can overlap), else the first parcel.
+  const p = ls.on_public_land ? (ls.parcels.find((pp) => pp.is_public) ?? ls.parcels[0]) : ls.parcels[0]
+  const tone = ls.on_public_land ? 'land-public' : 'land-private'
+  const icon = ls.on_public_land ? '🟢' : '🔒'
+  const rows: string[] = []
+  if (p?.public_access) rows.push(`<tr><td>Access</td><td>${esc(p.public_access)}</td></tr>`)
+  if (p?.as_of_date) rows.push(`<tr><td>As of</td><td>${esc(p.as_of_date)}</td></tr>`)
+  const table = rows.length ? `<table class="rec-table">${rows.join('')}</table>` : ''
+  return `<div class="popup-sec land-sec ${tone}">
+    <h4>${icon} Land status</h4>
+    <div class="land-summary">${esc(ls.summary)}</div>
+    ${table}
+    <div class="land-disc">${esc(ls.disclaimer)}</div>
+  </div>`
+}
+
 const GATE_LABELS: Record<string, string> = {
   active_claims: 'Active claims',
   land_ownership: 'Land ownership',
@@ -778,6 +825,15 @@ function buildClickWaypoint(
     return featureWaypoint(feat.properties ?? {}, lon, lat)
   }
   return null
+}
+
+// Fallback subject for a click on bare ground (no engine cell, no feature) so the
+// land-status popup can still be saved as a dropped pin.
+function manualWaypoint(lngLat: maplibregl.LngLat): Waypoint {
+  return {
+    id: newWaypointId(), lon: lngLat.lng, lat: lngLat.lat,
+    title: 'Dropped pin', kind: 'manual', details: {}, note: '',
+  }
 }
 
 // The "➕ Add to trip" control injected into spot popups (button + trip picker).
@@ -1305,7 +1361,6 @@ export default function MapView() {
       if (map.getLayer('recommend')) present.push('recommend')
       if (map.getLayer('trip-waypoints')) present.push('trip-waypoints')
       const feats = map.queryRenderedFeatures(box, { layers: present })
-      if (!feats.length) return
       // A saved-spot pin wins: open its waypoint popup (details + editable note).
       const pin = feats.find((f) => f.layer.id === 'trip-waypoints')
       if (pin) {
@@ -1325,17 +1380,31 @@ export default function MapView() {
       // The recommendation rationale leads the popup (it's the headline answer),
       // followed by whatever real features sit under the click.
       const rec = feats.find((f) => f.layer.id === 'recommend')
-      if (!picked.length && !rec) return
+      // Every click identifies the ground (tap-to-identify), so even bare ground
+      // opens a popup; the subject falls back to a dropped pin so it's savable.
       const recHtml = rec ? recommendSectionHtml(rec.properties ?? {}) : ''
-      // Let the click's primary subject be saved to a trip.
-      const wp = buildClickWaypoint(rec, picked[0], e.lngLat)
-      const addHtml = wp ? addTripControlHtml(tripsRef.current, activeTripIdRef.current) : ''
+      const wp = buildClickWaypoint(rec, picked[0], e.lngLat) ?? manualWaypoint(e.lngLat)
+      const addHtml = addTripControlHtml(tripsRef.current, activeTripIdRef.current)
+      // Land status needs a round-trip; open immediately with a slot, fill it in.
       const popup = new maplibregl.Popup({ maxWidth: '360px', closeButton: true, closeOnClick: true })
         .setLngLat(e.lngLat)
-        .setHTML(`<div class="popup">${recHtml}${featureSections(picked)}${addHtml}${directionsHtml(e.lngLat)}</div>`)
+        .setHTML(
+          `<div class="popup">${recHtml}${featureSections(picked)}` +
+            `<div class="popup-sec land-slot">📍 Checking land status…</div>` +
+            `${addHtml}${directionsHtml(e.lngLat)}</div>`,
+        )
         .addTo(map)
       wireCopyButton(popup)
-      if (wp) wireAddTripRef.current(popup, wp)
+      wireAddTripRef.current(popup, wp)
+      apiLandStatus(e.lngLat.lng, e.lngLat.lat)
+        .then((ls) => {
+          const slot = popup.getElement()?.querySelector('.land-slot')
+          if (slot) slot.outerHTML = landStatusSectionHtml(ls)
+        })
+        .catch(() => {
+          const slot = popup.getElement()?.querySelector('.land-slot')
+          if (slot) slot.textContent = '📍 Land status unavailable — is the API running?'
+        })
     })
 
     return () => {
