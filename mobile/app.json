@@ -1,0 +1,46 @@
+{
+  "expo": {
+    "name": "Compass Field",
+    "slug": "prospectors-compass-field",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.hvoegeli.compassfield",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "@maplibre/maplibre-react-native",
+      "expo-sharing",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Prospector's Compass uses your location to show where you are relative to your saved prospecting spots and to stamp finds with GPS coordinates."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Prospector's Compass attaches photos from your library to the finds you log.",
+          "cameraPermission": "Prospector's Compass uses the camera to photograph the finds you log in the field."
+        }
+      ]
+    ]
+  }
+}
