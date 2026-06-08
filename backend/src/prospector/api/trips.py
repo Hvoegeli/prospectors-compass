@@ -10,16 +10,20 @@ endpoints. This is the source the phone export will read from.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterator
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from starlette.background import BackgroundTask
 
 from prospector.db.base import SessionLocal
 from prospector.db.models import Trip
+from prospector.export.bundle import build_trip_bundle
 
 router = APIRouter(prefix="/trips", tags=["trips"])
 
@@ -110,6 +114,30 @@ def create_trip(body: TripCreate, db: Session = Depends(get_db)) -> TripOut:
 @router.get("/{trip_id}")
 def get_trip(trip_id: int, db: Session = Depends(get_db)) -> TripOut:
     return _out(_require(db, trip_id))
+
+
+@router.get("/{trip_id}/export-bundle")
+def export_trip_bundle(
+    trip_id: int,
+    target: str = Query(..., description="engine target id to bake into the bundle"),
+    buffer_mi: float = Query(3.0, ge=0.5, le=25, description="footprint pad around the waypoints"),
+    db: Session = Depends(get_db),
+) -> FileResponse:
+    """Build + download a single-file offline ``.pcbundle`` for the iOS field app:
+    the trip's waypoints, the engine's scored areas over the trip footprint, and a
+    clipped terrain basemap. The temp file is deleted after the response is sent."""
+    trip = _require(db, trip_id)
+    try:
+        path = build_trip_bundle(trip.id, trip.name, trip.waypoints or [], target, buffer_mi)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    slug = re.sub(r"[^A-Za-z0-9._-]+", "-", trip.name).strip("-") or f"trip-{trip.id}"
+    return FileResponse(
+        path,
+        media_type="application/zip",
+        filename=f"{slug}.pcbundle",
+        background=BackgroundTask(path.unlink, missing_ok=True),
+    )
 
 
 @router.put("/{trip_id}")
