@@ -66,6 +66,7 @@ RAG returns only with the optional AI layer._
 - [x] Click-to-inspect feature popups with source attribution (multi-layer popups; URL/report fields render as "Open ↗" links)
 - [x] Land-status disclaimer always visible when land-status (ownership) layer is on
 - [x] bbox-driven loading for the heavy layers (viewport-scoped fetch on pan/zoom)
+- [ ] **Real elevation contour lines** (toggleable overlay) — derive from the same 3DEP DEM (`gdal_contour` → vector lines, e.g. 40 ft/100 ft intervals) and render as a labeled line layer. _Distinct from the hillshade shaded relief; users want true contour lines for reading elevation. (A live raster-DEM relight basemap was explored and shelved — it produced fake-contour terracing past the 30 m native resolution; v1 keeps the baked hillshade. Relight WIP preserved on branch `feat/terrain-dem-relight`.)_
 
 ### 9. Trip planning (desktop)  [MVP14]
 - [ ] Trip model (date range + area + waypoints + finds + notes)
