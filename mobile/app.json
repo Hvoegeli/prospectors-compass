@@ -27,7 +27,6 @@
     },
     "plugins": [
       "@maplibre/maplibre-react-native",
-      "expo-sharing",
       [
         "expo-location",
         {
