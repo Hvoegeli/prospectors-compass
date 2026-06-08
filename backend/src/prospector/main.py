@@ -30,6 +30,10 @@ app.add_middleware(
     ],
     allow_methods=["*"],
     allow_headers=["*"],
+    # The bundle download reads the server-chosen filename from this header. CORS
+    # hides response headers from JS by default, so it must be explicitly exposed
+    # (the frontend runs on a different port → cross-origin).
+    expose_headers=["Content-Disposition"],
 )
 
 app.include_router(layers.router)

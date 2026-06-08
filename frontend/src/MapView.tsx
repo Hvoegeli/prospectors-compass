@@ -1122,6 +1122,7 @@ export default function MapView() {
   const [trips, setTrips] = useState<TripSummary[]>([])
   const [activeTripId, setActiveTripId] = useState<number | null>(null)
   const [activeTrip, setActiveTrip] = useState<TripFull | null>(null)
+  const [exporting, setExporting] = useState(false)
   const [renaming, setRenaming] = useState(false)
   const tripsRef = useRef<TripSummary[]>([])
   const activeTripIdRef = useRef<number | null>(null)
@@ -1654,6 +1655,40 @@ export default function MapView() {
     await selectTrip(list[0]?.id ?? null)
   }
 
+  // Build an offline .pcbundle for the active trip (the currently-selected engine
+  // target is baked in) and download it, ready to AirDrop to the phone. The
+  // backend clips the basemap + scores the footprint, so this can take a few
+  // seconds — `exporting` drives the button's busy state.
+  async function exportActiveTrip(): Promise<void> {
+    const t = activeTripRef.current
+    if (!t || t.waypoints.length === 0) return
+    setExporting(true)
+    try {
+      const url = `${TRIPS_URL}/${t.id}/export-bundle?target=${encodeURIComponent(engineTarget)}&buffer_mi=3`
+      const r = await fetch(url)
+      if (!r.ok) {
+        const msg = await r.text().catch(() => '')
+        alert(`Couldn’t build the bundle (${r.status}). ${msg}`)
+        return
+      }
+      const blob = await r.blob()
+      const href = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = href
+      const cd = r.headers.get('Content-Disposition') ?? ''
+      const m = /filename="?([^";]+)"?/.exec(cd)
+      a.download = m ? m[1] : `${t.name || 'trip'}.pcbundle`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(href)
+    } catch (err) {
+      alert(`Export failed: ${String(err)}`)
+    } finally {
+      setExporting(false)
+    }
+  }
+
   // Paint the active trip's waypoints as pins (amber fill = has a note).
   function renderWaypointPins(trip: TripFull | null): void {
     const map = mapRef.current
@@ -2045,7 +2080,18 @@ export default function MapView() {
                     >
                       Delete trip
                     </button>
-                    <span className="trip-soon">📲 Transfer to phone — soon</span>
+                    <button
+                      className="trip-export"
+                      disabled={exporting || activeTrip.waypoints.length === 0}
+                      title={
+                        activeTrip.waypoints.length === 0
+                          ? 'Add at least one spot first'
+                          : `Build an offline bundle (${engineTarget}) to AirDrop to your phone`
+                      }
+                      onClick={() => void exportActiveTrip()}
+                    >
+                      {exporting ? '⏳ Building…' : '📲 Export to phone'}
+                    </button>
                   </div>
                 </>
               )}

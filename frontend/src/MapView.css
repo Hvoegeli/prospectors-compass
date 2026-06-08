@@ -744,11 +744,21 @@
   background: rgba(127, 29, 29, 0.3);
 }
 
-.trip-soon {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: #64748b;
+.trip-export {
+  background: #2f8f5f;
+  border: 1px solid #2f8f5f;
+  color: #ffffff;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font: 600 12px system-ui, sans-serif;
+  cursor: pointer;
+}
+.trip-export:hover:not(:disabled) {
+  background: #27794f;
+}
+.trip-export:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 /* "➕ Add to trip" control inside spot popups */
