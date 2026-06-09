@@ -88,7 +88,7 @@ Postgres is at `localhost:1776`, db `prospector`, user `prospector`, pwd `prospe
 ## To resume
 
 ```bash
-cd "/Users/harrisonvoegeli/Desktop/projects/Unfinished Projects/prospectors-compass"
+cd "/Users/harrisonvoegeli/Desktop/projects/Unfinished-Projects/prospectors-compass"
 docker compose up -d                       # postgres (host port 1776)
 cd backend && uv run pytest                # sanity (expect 27 green)
 ```
