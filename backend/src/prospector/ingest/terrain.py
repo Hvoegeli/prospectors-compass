@@ -20,8 +20,11 @@ import logging
 import math
 import subprocess
 
+import geopandas as gpd
 import httpx
+from sqlalchemy import text
 
+from prospector.db.base import engine
 from prospector.ingest.census import load_region_counties
 from prospector.ingest.focus_area import DEFAULT_REGION, DownloadRegion
 from prospector.ingest.storage import (
@@ -42,6 +45,16 @@ DEM_DIR = RAW_DIR / "dem"
 DEM_3857 = PROCESSED_DIR / "dem_3857.tif"
 SLOPE_TIF = PROCESSED_DIR / "slope.tif"
 ASPECT_TIF = PROCESSED_DIR / "aspect.tif"
+
+# Contour lines, traced from the DEM by build_contours.
+CONTOURS_GPKG = PROCESSED_DIR / "contours.gpkg"
+CONTOUR_TABLE = "contour_lines"
+# US-style contours: a line every 40 ft, every 5th (200 ft) an "index" contour
+# (drawn heavier + labeled). The DEM's elevation is in METRES, and gdal_contour's
+# interval is in those z-units, so we convert: 40 ft = 12.192 m.
+FT_PER_M = 3.28084
+CONTOUR_INTERVAL_FT = 40
+INDEX_INTERVAL_FT = 200
 
 # OSGeo's official GDAL image (the small Ubuntu build has all the CLI tools).
 GDAL_IMAGE = "ghcr.io/osgeo/gdal:ubuntu-small-latest"
@@ -153,6 +166,65 @@ def build_terrain_derivatives() -> tuple[str, str]:
     _gdal("gdaldem", "aspect", "-compute_edges", _container_path(DEM_3857), _container_path(ASPECT_TIF), *co)
     log.info("Built terrain derivatives: %s, %s", SLOPE_TIF, ASPECT_TIF)
     return str(SLOPE_TIF), str(ASPECT_TIF)
+
+
+def build_contours(region: DownloadRegion = DEFAULT_REGION) -> int:
+    """Trace elevation contour lines from the DEM and load them into PostGIS.
+
+    Uses ``gdal_contour`` on the reprojected ``dem_3857.tif`` (built by
+    ``build_basemap``) at a 40 ft interval, tags each line with its elevation in
+    feet and whether it's a 200 ft index contour, and bulk-loads the result into
+    the ``contour_lines`` table (served by the generic ``/layers`` endpoint).
+
+    Idempotent: replaces the table each run. Returns the number of contour lines.
+    Note ``region`` is accepted for CLI symmetry; the contours come from whatever
+    DEM extent ``build_basemap`` produced for that region.
+    """
+    if not DEM_3857.exists():
+        raise RuntimeError(f"{DEM_3857} missing — run `ingest basemap` first.")
+
+    interval_m = CONTOUR_INTERVAL_FT / FT_PER_M  # 40 ft → 12.192 m
+    CONTOURS_GPKG.unlink(missing_ok=True)  # gdal_contour won't overwrite
+    # Trace isolines; -a writes the contour's elevation (raster z = metres) onto
+    # each feature as `elev_m`. Output a GeoPackage of LineStrings (EPSG:3857).
+    _gdal(
+        "gdal_contour", "-a", "elev_m", "-i", f"{interval_m:.6f}",
+        _container_path(DEM_3857), _container_path(CONTOURS_GPKG),
+    )
+
+    # Reproject to WGS84 (the SRID every other layer + the bbox filter use),
+    # derive feet + the index flag, and bulk-load. to_postgis is used instead of
+    # the row-by-row ORM inserts elsewhere because this is hundreds of thousands
+    # of lines — an ORM loop would be far too slow.
+    gdf = gpd.read_file(CONTOURS_GPKG).to_crs(4326)
+    gdf = gdf[gdf.geometry.notna() & ~gdf.geometry.is_empty].copy()
+    gdf["elev_ft"] = (gdf["elev_m"] * FT_PER_M).round().astype(int)
+    gdf["is_index"] = gdf["elev_ft"] % INDEX_INTERVAL_FT == 0
+    gdf = gdf[["elev_ft", "is_index", "geometry"]].rename_geometry("geom")
+
+    gdf.to_postgis(CONTOUR_TABLE, engine, if_exists="replace", index=False)
+    # Subdivide long lines into small pieces (≤128 vertices) so each row has a tight
+    # bounding box. A single contour can wind for miles; left whole, its bbox spans
+    # the region and a viewport query pulls thousands of huge geometries (slow /
+    # Postgres OOM). Subdividing makes the spatial index selective and per-row clips
+    # cheap. ST_Subdivide is a set-returning fn — it expands each line into N rows.
+    with engine.begin() as conn:
+        conn.execute(text(f"DROP TABLE IF EXISTS {CONTOUR_TABLE}_sub"))
+        conn.execute(text(
+            f"CREATE TABLE {CONTOUR_TABLE}_sub AS "
+            f"SELECT elev_ft, is_index, ST_Subdivide(geom, 128) AS geom FROM {CONTOUR_TABLE}"
+        ))
+        conn.execute(text(f"DROP TABLE {CONTOUR_TABLE}"))
+        conn.execute(text(f"ALTER TABLE {CONTOUR_TABLE}_sub RENAME TO {CONTOUR_TABLE}"))
+        # The /layers viewport query (ST_Intersects + ST_ClipByBox2D) needs this.
+        conn.execute(text(
+            f"CREATE INDEX {CONTOUR_TABLE}_geom_gix ON {CONTOUR_TABLE} USING GIST (geom)"
+        ))
+        count = conn.execute(text(f"SELECT count(*) FROM {CONTOUR_TABLE}")).scalar_one()
+
+    log.info("Built %d contour pieces (%d ft / %d ft index) for region '%s'",
+             count, CONTOUR_INTERVAL_FT, INDEX_INTERVAL_FT, region.name)
+    return count
 
 
 def sample_raster(raster_path, points: list[tuple[float, float]]) -> list[float | None]:

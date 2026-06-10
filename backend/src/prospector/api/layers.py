@@ -35,10 +35,18 @@ LAYERS: dict[str, str] = {
     "claims": "mining_claims",
     "streams": "streams",
     "faults": "faults",
+    "contours": "contour_lines",
 }
 
 #: Layers backed by a shared table, distinguished by a fixed category filter.
 _LAYER_CATEGORY: dict[str, str] = {"roads": "road", "trails": "trail"}
+
+#: Layers whose individual geometries are huge (a contour line can wind for miles,
+#: so its bounding box can span the whole region). For these we select only lines
+#: that truly cross the viewport (ST_Intersects, not bbox-overlap) and clip each to
+#: the viewport box, returning just the on-screen sliver — otherwise aggregating
+#: thousands of region-spanning lines OOM-kills Postgres. A bbox is required.
+_CLIP_LAYERS: set[str] = {"contours"}
 
 # Tokenize the comma-joined commod1-3 into individual commodities for both the
 # facet list and the filter, so "Gold" matches a "Gold, Silver" site.
@@ -86,8 +94,14 @@ def get_layer(
     if table is None:
         raise HTTPException(status_code=404, detail=f"unknown layer '{name}'")
 
+    # Clip layers must be viewport-scoped — without a bbox we'd try to aggregate
+    # the entire (huge) table and OOM Postgres, so return nothing instead.
+    if name in _CLIP_LAYERS and not bbox:
+        return {"type": "FeatureCollection", "features": []}
+
     params: dict[str, object] = {"lim": limit}
     conditions: list[str] = []
+    env = "ST_MakeEnvelope(:minx, :miny, :maxx, :maxy, 4326)"
 
     if name in _LAYER_CATEGORY:
         conditions.append("t.category = :category")
@@ -100,7 +114,10 @@ def get_layer(
             raise HTTPException(
                 status_code=400, detail="bbox must be 'minLon,minLat,maxLon,maxLat'"
             ) from exc
-        conditions.append("t.geom && ST_MakeEnvelope(:minx, :miny, :maxx, :maxy, 4326)")
+        # Clip layers: exact crossing test (ST_Intersects) so we don't pull every
+        # line whose bbox merely overlaps. Others: fast bbox-overlap (&&).
+        conditions.append(f"ST_Intersects(t.geom, {env})" if name in _CLIP_LAYERS
+                          else f"t.geom && {env}")
         params |= {"minx": minx, "miny": miny, "maxx": maxx, "maxy": maxy}
 
     # commodity / dep_type filters only apply to the mrds layer (only it has them).
@@ -114,7 +131,16 @@ def get_layer(
 
     where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
 
-    # table/where are server-controlled (whitelist + fixed strings); values are bound.
+    # Clip layers return only the slice of each geometry inside the viewport box
+    # (keeps the payload small for long lines) at reduced coord precision (~0.1 m);
+    # others return full geometry at full precision.
+    geojson = (
+        f"ST_AsGeoJSON(ST_ClipByBox2D(t.geom, {env}), 6)::jsonb"
+        if name in _CLIP_LAYERS
+        else "ST_AsGeoJSON(t.geom)::jsonb"
+    )
+
+    # table/where/geojson are server-controlled (whitelist + fixed strings); values are bound.
     sql = text(
         f"""
         SELECT jsonb_build_object(
@@ -124,7 +150,7 @@ def get_layer(
         FROM (
             SELECT jsonb_build_object(
                 'type', 'Feature',
-                'geometry', ST_AsGeoJSON(t.geom)::jsonb,
+                'geometry', {geojson},
                 'properties', to_jsonb(t) - 'geom'
             ) AS feature
             FROM {table} t

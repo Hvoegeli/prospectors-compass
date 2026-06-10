@@ -23,6 +23,10 @@ const BASE_STYLE: StyleSpecification = {
       type: 'raster',
       tiles: [`${TILE_BASE}/data/hillshade/{z}/{x}/{y}.png`],
       tileSize: 256,
+      // The baked hillshade only goes to z12; declare it so MapLibre overzooms
+      // (stretches z12 tiles) past that instead of requesting nonexistent z13+
+      // tiles — which 404'd by the thousand and left deep zoom black.
+      maxzoom: 12,
       attribution: 'Elevation: USGS 3DEP',
     },
   },
@@ -45,6 +49,7 @@ const LAYERS: LayerInfo[] = [
   { id: 'potential', label: 'Mineral potential (CGS)', group: 'finds' },
   { id: 'districts', label: 'Historic mining districts', group: 'finds' },
   { id: 'claims', label: 'Active mining claims (BLM)', group: 'land' },
+  { id: 'contours', label: 'Contour lines (40 ft)', group: 'access' },
   { id: 'forests', label: 'National forest boundaries', group: 'land' },
   { id: 'counties', label: 'County boundaries', group: 'access' },
   { id: 'streams', label: 'Streams & rivers', group: 'access' },
@@ -329,6 +334,24 @@ function layerSpec(id: string): LayerSpecification {
       }
     case 'counties':
       return { id, source, type: 'line', paint: { 'line-color': '#e2e8f0', 'line-width': 1.4 } }
+    case 'contours':
+      // One line layer; the 200 ft index contours (is_index) draw heavier + darker.
+      return {
+        id,
+        source,
+        type: 'line',
+        minzoom: CONTOUR_MIN_ZOOM,
+        layout: { 'line-join': 'round' },
+        paint: {
+          'line-color': ['case', ['get', 'is_index'], '#5a3a1a', '#7a5638'],
+          'line-width': [
+            'interpolate', ['linear'], ['zoom'],
+            11, ['case', ['get', 'is_index'], 1.6, 0.8],
+            16, ['case', ['get', 'is_index'], 3.4, 1.6],
+          ],
+          'line-opacity': 0.85,
+        },
+      }
     case 'streams':
       // Main perennial creeks, rivers & streams (year-round water for panning).
       return {
@@ -851,8 +874,11 @@ type Facets = { commodities: string[]; deposit_types: string[] }
 
 // Heavy layers load by viewport (bbox). MRDS skips bbox when commodity-filtered
 // (a filter is meant to find a target everywhere, not just on-screen).
-const BBOX_LAYERS = new Set(['mrds', 'usmin', 'potential', 'aml', 'claims', 'streams'])
-const PAN_LAYERS = ['usmin', 'potential', 'aml', 'claims', 'streams'] // mrds is handled separately
+const BBOX_LAYERS = new Set(['mrds', 'usmin', 'potential', 'aml', 'claims', 'streams', 'contours'])
+const PAN_LAYERS = ['usmin', 'potential', 'aml', 'claims', 'streams', 'contours'] // mrds is handled separately
+// Contours are dense (300k+ lines region-wide) and only legible zoomed in, so
+// they only render + fetch at/above this zoom (matches the layer's minzoom).
+const CONTOUR_MIN_ZOOM = 11
 
 function bboxParam(map: maplibregl.Map): string {
   const b = map.getBounds()
@@ -1239,6 +1265,11 @@ export default function MapView() {
           // Don't refetch a hidden viewport layer (toggle() refreshes it on
           // turn-on). mrds is exempt — it's the primary layer, kept fresh here.
           if (id !== 'mrds' && map.getLayoutProperty(id, 'visibility') === 'none') continue
+          // Contours only load zoomed in; clear them (don't fetch) when zoomed out.
+          if (id === 'contours' && map.getZoom() < CONTOUR_MIN_ZOOM) {
+            src.setData(EMPTY_FC)
+            continue
+          }
           const seq = nextReq(reqSeq.current, id)
           fetch(layerUrl(id, map, id === 'mrds' ? commodity ?? '' : '', id === 'mrds' ? depType : ''))
             .then((r) => r.json())
@@ -1285,6 +1316,16 @@ export default function MapView() {
       let countiesData: GeoJSON.FeatureCollection | null = null
       for (const { id } of LAYERS) {
         try {
+          if (id === 'contours') {
+            // Don't fetch region-wide at load (300k+ lines). Start empty; the pan
+            // handler + toggle fill the viewport's contours once zoomed to z>=11.
+            // (Elevation labels are deferred until self-hosted font glyphs exist —
+            // a symbol/text layer needs a style `glyphs` URL we don't serve yet.)
+            map.addSource('contours-src', { type: 'geojson', data: EMPTY_FC })
+            map.addLayer(layerSpec('contours'))
+            map.setLayoutProperty('contours', 'visibility', 'none')
+            continue
+          }
           const res = await fetch(layerUrl(id, map))
           if (!res.ok) throw new Error(`${res.status}`)
           const data = (await res.json()) as GeoJSON.FeatureCollection
@@ -1423,7 +1464,12 @@ export default function MapView() {
     setVisible((v) => ({ ...v, [id]: next }))
     // The pan handler skips hidden viewport layers, so when one is turned back
     // on, refresh it for the current view (mrds is driven by the target effect).
-    if (next && id !== 'mrds' && BBOX_LAYERS.has(id)) {
+    // Contours are skipped here when zoomed out — the pan handler fills them in
+    // once the user is at z>=11 (they're hidden by minzoom until then anyway).
+    if (
+      next && id !== 'mrds' && BBOX_LAYERS.has(id) &&
+      !(id === 'contours' && map.getZoom() < CONTOUR_MIN_ZOOM)
+    ) {
       const src = map.getSource(`${id}-src`) as maplibregl.GeoJSONSource | undefined
       if (src) {
         const seq = nextReq(reqSeq.current, id)

@@ -29,7 +29,7 @@ from prospector.ingest.padus import ingest_ownership
 from prospector.ingest.roads import ingest_forest, ingest_roads
 from prospector.ingest.storage import PROCESSED_DIR, ensure_dir
 from prospector.ingest.streams import ingest_streams
-from prospector.ingest.terrain import build_basemap
+from prospector.ingest.terrain import build_basemap, build_contours
 from prospector.ingest.usfs_forest import ingest_forests
 from prospector.ingest.usmin import ingest_usmin
 from prospector.ingest.watershed import ingest_watersheds
@@ -149,6 +149,14 @@ def _run_basemap() -> None:
     print(f"✓ Built {out}. Start TileServer GL: docker compose up -d tileserver.")
 
 
+def _run_contours() -> None:
+    region = DEFAULT_REGION
+    print(f"Tracing contour lines (40 ft / 200 ft index) from the DEM for: {region.name}")
+    print("Runs gdal_contour via Docker over the basemap DEM — this is slow.")
+    count = build_contours(region)
+    print(f"✓ Built {count} contour segments (subdivided) into PostGIS table 'contour_lines'.")
+
+
 def _run_all() -> None:
     """Run every ingestion step in dependency order (counties first — it's the clip mask)."""
     _run_counties()
@@ -211,6 +219,7 @@ def main() -> None:
     sub.add_parser("all", help="Run every ingestion step in order")
     sub.add_parser("refresh", help="Force fresh re-download + re-ingest of every source")
     sub.add_parser("basemap", help="Build the hillshade basemap MBTiles (DEM via GDAL/Docker)")
+    sub.add_parser("contours", help="Trace elevation contour lines from the DEM (gdal_contour)")
     args = parser.parse_args()
 
     # Clipping needs the county mask, so counties must come first.
@@ -250,6 +259,8 @@ def main() -> None:
         _run_refresh()
     elif args.command == "basemap":
         _run_basemap()
+    elif args.command == "contours":
+        _run_contours()
 
 
 if __name__ == "__main__":
