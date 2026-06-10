@@ -18,6 +18,10 @@ const ZOOM = 6.6
 // and the dark background shows through — the map still works.
 const BASE_STYLE: StyleSpecification = {
   version: 8,
+  // Glyphs (font atlases) for any text layer — served by the same TileServer GL
+  // that serves the hillshade (serveAllFonts + the bundled Noto Sans Regular
+  // fontstack). Contour elevation labels are the only text layer that uses these.
+  glyphs: `${TILE_BASE}/fonts/{fontstack}/{range}.pbf`,
   sources: {
     hillshade: {
       type: 'raster',
@@ -879,6 +883,39 @@ const PAN_LAYERS = ['usmin', 'potential', 'aml', 'claims', 'streams', 'contours'
 // Contours are dense (300k+ lines region-wide) and only legible zoomed in, so
 // they only render + fetch at/above this zoom (matches the layer's minzoom).
 const CONTOUR_MIN_ZOOM = 11
+// Elevation numbers are only legible (and uncluttered) when zoomed in further
+// still, so labels start a couple zoom levels above the lines themselves.
+const CONTOUR_LABEL_MIN_ZOOM = 13
+// Companion symbol layer that prints the elevation along each 200 ft INDEX
+// contour. It reads the same `contours-src` data the line layer loads (no extra
+// fetch) and is filtered to index lines only — labelling every 40 ft line would
+// be an unreadable thicket. text-font must match a fontstack TileServer GL serves
+// (the bundled Noto Sans Regular). Placed along the line, repeated every
+// ~symbol-spacing px, with a white halo so digits read over busy terrain.
+const CONTOUR_LABEL_LAYER = 'contours-labels'
+function contourLabelSpec(): LayerSpecification {
+  return {
+    id: CONTOUR_LABEL_LAYER,
+    source: 'contours-src',
+    type: 'symbol',
+    minzoom: CONTOUR_LABEL_MIN_ZOOM,
+    filter: ['==', ['get', 'is_index'], true],
+    layout: {
+      'symbol-placement': 'line',
+      'text-field': ['concat', ['to-string', ['get', 'elev_ft']], "'"],
+      'text-font': ['Noto Sans Regular'],
+      'text-size': 11,
+      'symbol-spacing': 320,
+      'text-max-angle': 25,
+      'text-padding': 6,
+    },
+    paint: {
+      'text-color': '#3a2510',
+      'text-halo-color': 'rgba(255,255,255,0.9)',
+      'text-halo-width': 1.4,
+    },
+  }
+}
 
 function bboxParam(map: maplibregl.Map): string {
   const b = map.getBounds()
@@ -1319,11 +1356,15 @@ export default function MapView() {
           if (id === 'contours') {
             // Don't fetch region-wide at load (300k+ lines). Start empty; the pan
             // handler + toggle fill the viewport's contours once zoomed to z>=11.
-            // (Elevation labels are deferred until self-hosted font glyphs exist —
-            // a symbol/text layer needs a style `glyphs` URL we don't serve yet.)
+            // The label layer shares this source, so it draws elevations off the
+            // same data with no extra fetch. Both start hidden and toggle together.
             map.addSource('contours-src', { type: 'geojson', data: EMPTY_FC })
+            // Pair each addLayer with its own visibility so a failure adding the
+            // second layer can't leave the first stuck visible.
             map.addLayer(layerSpec('contours'))
             map.setLayoutProperty('contours', 'visibility', 'none')
+            map.addLayer(contourLabelSpec())
+            map.setLayoutProperty(CONTOUR_LABEL_LAYER, 'visibility', 'none')
             continue
           }
           const res = await fetch(layerUrl(id, map))
@@ -1461,6 +1502,11 @@ export default function MapView() {
     if (!map || !map.getLayer(id)) return
     const next = !visible[id]
     map.setLayoutProperty(id, 'visibility', next ? 'visible' : 'none')
+    // The contour label layer is an internal companion (not a menu entry); keep
+    // its visibility in lockstep with the contour lines it annotates.
+    if (id === 'contours' && map.getLayer(CONTOUR_LABEL_LAYER)) {
+      map.setLayoutProperty(CONTOUR_LABEL_LAYER, 'visibility', next ? 'visible' : 'none')
+    }
     setVisible((v) => ({ ...v, [id]: next }))
     // The pan handler skips hidden viewport layers, so when one is turned back
     // on, refresh it for the current view (mrds is driven by the target effect).

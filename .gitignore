@@ -39,6 +39,11 @@ android/app/build/
 # machine and stay local — the repo ships the code that downloads, not the data.
 tiles/*
 !tiles/config.json
+# Map label fonts (Noto Sans Regular glyphs) ARE tracked — a tiny, fixed
+# dependency the contour elevation labels need, not a per-machine build artifact
+# like the .mbtiles. Committing them keeps labels working offline / on a fresh
+# checkout, in line with the offline-first design.
+!tiles/fonts/
 *.mbtiles
 data/
 backend/data/

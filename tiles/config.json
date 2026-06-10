@@ -2,8 +2,10 @@
   "options": {
     "paths": {
       "root": "",
-      "mbtiles": ""
-    }
+      "mbtiles": "",
+      "fonts": "fonts"
+    },
+    "serveAllFonts": true
   },
   "data": {
     "hillshade": {
