@@ -39,7 +39,8 @@
           "photosPermission": "Prospector's Compass attaches photos from your library to the finds you log.",
           "cameraPermission": "Prospector's Compass uses the camera to photograph the finds you log in the field."
         }
-      ]
+      ],
+      "expo-asset"
     ]
   }
 }

@@ -1,33 +1,84 @@
-import { useEffect, useRef, useState } from 'react'
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
-import { Camera, type CameraRef, Map, UserLocation } from '@maplibre/maplibre-react-native'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import {
+  ActivityIndicator,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native'
+import {
+  Camera,
+  type CameraRef,
+  GeoJSONSource,
+  Layer,
+  Map,
+  RasterSource,
+  type StyleSpecification,
+  UserLocation,
+} from '@maplibre/maplibre-react-native'
 import * as Location from 'expo-location'
+import {
+  loadTripBundle,
+  scoredCellsFC,
+  waypointsFC,
+  type LoadedTrip,
+  type Waypoint,
+} from './src/bundle'
 
-// First-milestone basemap: MapLibre's public demo style (ONLINE). Its only job is
-// to prove the native map renders and GPS works on the device. The offline MBTiles
-// trip bundle replaces this in the next milestone — offline-first is the point.
-const DEMO_STYLE = 'https://demotiles.maplibre.org/style.json'
-
-// Colorado I-70 corridor — the desktop's default view; shown until we get a fix.
+// Colorado I-70 corridor — a sane pre-trip fallback if we somehow render the map
+// before a footprint is known (we normally gate on the trip loading first).
 const FALLBACK_CENTER: [number, number] = [-106.4, 39.3]
-const FALLBACK_ZOOM = 6.5
 const FOLLOW_ZOOM = 14
+
+// Offline base style: no remote fetch (we're offline-first). The dark background
+// shows through anywhere the bundled hillshade has no tiles. The real basemap is
+// added as an mbtiles:// RasterSource child once the trip's tiles are on disk.
+const OFFLINE_STYLE: StyleSpecification = {
+  version: 8,
+  sources: {},
+  layers: [{ id: 'bg', type: 'background', paint: { 'background-color': '#0e1726' } }],
+}
 
 type Fix = { lon: number; lat: number; accuracy: number | null }
 type Panel = 'trip' | 'layers' | null
+// Which overlays are drawn — driven by the Layers panel toggles.
+type LayerVis = { basemap: boolean; scored: boolean; waypoints: boolean }
 
 export default function App() {
   const [status, setStatus] = useState<'loading' | 'granted' | 'denied'>('loading')
   const [fix, setFix] = useState<Fix | null>(null)
   const [panel, setPanel] = useState<Panel>(null)
+
+  // The loaded offline trip bundle (basemap + scored areas + waypoints).
+  const [trip, setTrip] = useState<LoadedTrip | null>(null)
+  const [tripError, setTripError] = useState<string | null>(null)
+  const [vis, setVis] = useState<LayerVis>({ basemap: true, scored: true, waypoints: true })
+
   const subRef = useRef<Location.LocationSubscription | null>(null)
   const cameraRef = useRef<CameraRef>(null)
-  // Center on the user once, the first time we get a fix. After that the map is
-  // the user's to pan/zoom freely — re-centering only happens on the 📍 button.
-  const didAutoCenter = useRef(false)
+  const didFit = useRef(false)
 
-  // Request foreground location permission, then watch position. GPS works with no
-  // cell signal (the receiver is passive), so this functions fully in the field.
+  // Load the offline trip bundle once on mount (unzips it into the documents dir
+  // on first launch, then just reads it back). This is the keystone — until it
+  // lands the map has nothing offline to show.
+  useEffect(() => {
+    let active = true
+    loadTripBundle()
+      .then((loaded) => {
+        if (active) setTrip(loaded)
+      })
+      .catch((err) => {
+        console.error('trip bundle load failed', err)
+        if (active) setTripError(String(err?.message ?? err))
+      })
+    return () => {
+      active = false
+    }
+  }, [])
+
+  // Request foreground location, then watch position. GPS works with no cell
+  // signal (the receiver is passive), so this functions fully in the field.
   useEffect(() => {
     let active = true
     ;(async () => {
@@ -38,9 +89,8 @@ export default function App() {
         return
       }
       setStatus('granted')
-      // One-shot fix first: watchPositionAsync is event-driven and its first
-      // event can lag (it waits for movement — badly so on a static simulator
-      // location), so request the current position directly for an instant fix.
+      // One-shot fix first: watchPositionAsync's first event can lag (it waits
+      // for movement — badly so on a static simulator location).
       try {
         const first = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High })
         if (active) {
@@ -54,16 +104,9 @@ export default function App() {
         { accuracy: Location.Accuracy.High, distanceInterval: 5, timeInterval: 2000 },
         (loc) => {
           if (!active) return
-          setFix({
-            lon: loc.coords.longitude,
-            lat: loc.coords.latitude,
-            accuracy: loc.coords.accuracy,
-          })
+          setFix({ lon: loc.coords.longitude, lat: loc.coords.latitude, accuracy: loc.coords.accuracy })
         },
       )
-      // If we unmounted while watchPositionAsync was still resolving, cleanup
-      // already ran (subRef was null) — remove this orphaned watcher now so it
-      // doesn't keep the GPS alive and drain the battery.
       if (!active) {
         sub.remove()
         return
@@ -76,9 +119,38 @@ export default function App() {
     }
   }, [])
 
-  // Ease the camera to a fix. The native camera throws if the map view isn't
-  // initialized yet, so swallow that and report success — the caller decides
-  // whether to retry. Returns false if nothing moved (map not ready / no ref).
+  // Derive the map overlays from the manifest once (not on every render).
+  const cellsFC = useMemo(() => (trip ? scoredCellsFC(trip.manifest) : null), [trip])
+  const wpsFC = useMemo(() => (trip ? waypointsFC(trip.manifest) : null), [trip])
+  const footprintCenter = useMemo<[number, number]>(() => {
+    if (!trip) return FALLBACK_CENTER
+    const [minLon, minLat, maxLon, maxLat] = trip.manifest.footprint.bbox
+    return [(minLon + maxLon) / 2, (minLat + maxLat) / 2]
+  }, [trip])
+
+  // Frame the trip footprint when both the trip and the camera are ready. The
+  // camera throws if the map view isn't initialized yet, so swallow and retry on
+  // the next tick — the flag is burned only on a successful fit.
+  useEffect(() => {
+    if (!trip || didFit.current) return
+    let tries = 0
+    const attempt = () => {
+      const cam = cameraRef.current
+      if (cam) {
+        try {
+          cam.fitBounds(trip.manifest.footprint.bbox)
+          didFit.current = true
+          return
+        } catch {
+          // map not ready yet — fall through to retry
+        }
+      }
+      if (tries++ < 10) timer = setTimeout(attempt, 200)
+    }
+    let timer = setTimeout(attempt, 200)
+    return () => clearTimeout(timer)
+  }, [trip])
+
   function easeToFix(f: Fix, duration: number): boolean {
     const cam = cameraRef.current
     if (!cam) return false
@@ -90,29 +162,101 @@ export default function App() {
     }
   }
 
-  // First fix: glide the camera to the user once. The flag is burned only on a
-  // successful move, so an early fix (before the map is ready) retries on the
-  // next fix instead of leaving us stuck off-center. Subsequent fixes are
-  // ignored, so it never fights the user's own panning.
-  useEffect(() => {
-    if (fix && !didAutoCenter.current && easeToFix(fix, 800)) {
-      didAutoCenter.current = true
-    }
-  }, [fix])
-
   function centerOnMe(): void {
     if (fix) easeToFix(fix, 500)
   }
 
+  function jumpToWaypoint(w: Waypoint): void {
+    const cam = cameraRef.current
+    if (!cam) return
+    try {
+      cam.easeTo({ center: [w.lon, w.lat], zoom: FOLLOW_ZOOM, duration: 600 })
+      setPanel(null)
+    } catch {
+      // ignore if the map isn't ready
+    }
+  }
+
+  function toggleVis(key: keyof LayerVis): void {
+    setVis((v) => ({ ...v, [key]: !v[key] }))
+  }
+
+  // --- Loading / error gates: don't mount the map until we have a footprint ---
+  if (tripError) {
+    return (
+      <View style={styles.center}>
+        <Text style={styles.centerTitle}>Couldn&apos;t open trip</Text>
+        <Text style={styles.centerText}>{tripError}</Text>
+      </View>
+    )
+  }
+  if (!trip || !cellsFC || !wpsFC) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator color="#cbd5e1" />
+        <Text style={styles.centerText}>Loading trip…</Text>
+      </View>
+    )
+  }
+
+  const { manifest, basemapMbtilesUrl } = trip
+  const bm = manifest.basemap
+
   return (
     <View style={styles.root}>
-      <Map style={styles.map} mapStyle={DEMO_STYLE}>
-        {/* initialViewState (not controlled center/zoom) so pinch-zoom + pan stay
-            in the user's hands; we move the camera imperatively via the ref. */}
-        <Camera
-          ref={cameraRef}
-          initialViewState={{ center: FALLBACK_CENTER, zoom: FALLBACK_ZOOM }}
-        />
+      <Map style={styles.map} mapStyle={OFFLINE_STYLE}>
+        <Camera ref={cameraRef} initialViewState={{ center: footprintCenter, zoom: 11.5 }} />
+
+        {/* Offline shaded-relief basemap, read straight from the bundled MBTiles. */}
+        {basemapMbtilesUrl && (
+          <RasterSource
+            id="basemap"
+            tiles={[basemapMbtilesUrl]}
+            tileSize={bm?.tile_size ?? 256}
+            minzoom={bm?.minzoom ?? 0}
+            maxzoom={bm?.maxzoom ?? 22}
+          >
+            <Layer
+              id="basemap-layer"
+              type="raster"
+              layout={{ visibility: vis.basemap ? 'visible' : 'none' }}
+            />
+          </RasterSource>
+        )}
+
+        {/* Engine scored cells — warmer = higher score (matches the desktop heat surface). */}
+        <GeoJSONSource id="scored" data={cellsFC}>
+          <Layer
+            id="scored-fill"
+            type="fill"
+            layout={{ visibility: vis.scored ? 'visible' : 'none' }}
+            paint={{
+              'fill-color': [
+                'interpolate', ['linear'], ['get', 'score'],
+                0, '#fde68a', 50, '#f59e0b', 100, '#b45309',
+              ],
+              'fill-opacity': 0.45,
+              'fill-outline-color': '#92400e',
+            }}
+          />
+        </GeoJSONSource>
+
+        {/* Saved waypoints. Circles only — the offline map has no font glyphs, so
+            no text labels (same constraint we hit on the desktop contours). */}
+        <GeoJSONSource id="waypoints" data={wpsFC}>
+          <Layer
+            id="wp-circles"
+            type="circle"
+            layout={{ visibility: vis.waypoints ? 'visible' : 'none' }}
+            paint={{
+              'circle-radius': 6,
+              'circle-color': '#db2777',
+              'circle-stroke-color': '#ffffff',
+              'circle-stroke-width': 2,
+            }}
+          />
+        </GeoJSONSource>
+
         <UserLocation />
       </Map>
 
@@ -125,7 +269,7 @@ export default function App() {
         <Text style={styles.fabIcon}>📋</Text>
       </TouchableOpacity>
 
-      {/* Top-right: the layers loaded for this trip */}
+      {/* Top-right: which overlays are shown */}
       <TouchableOpacity
         style={[styles.fab, styles.topRight]}
         onPress={() => setPanel((p) => (p === 'layers' ? null : 'layers'))}
@@ -144,13 +288,24 @@ export default function App() {
         <Text style={styles.fabIcon}>📍</Text>
       </TouchableOpacity>
 
-      {/* Bottom-left: reserved for a to-be-determined tool */}
+      {/* Bottom-left: frame the whole trip footprint */}
       <TouchableOpacity
         style={[styles.fab, styles.bottomLeft]}
-        onPress={() => setPanel(null)}
-        accessibilityLabel="More (coming soon)"
+        onPress={() => {
+          didFit.current = false
+          const cam = cameraRef.current
+          if (cam) {
+            try {
+              cam.fitBounds(manifest.footprint.bbox)
+              didFit.current = true
+            } catch {
+              // ignore if not ready
+            }
+          }
+        }}
+        accessibilityLabel="Frame the whole trip"
       >
-        <Text style={[styles.fabIcon, styles.fabIconMuted]}>•••</Text>
+        <Text style={styles.fabIcon}>🗺️</Text>
       </TouchableOpacity>
 
       {/* Top-center status pill: app name + live GPS readout */}
@@ -167,28 +322,43 @@ export default function App() {
         )}
       </View>
 
-      {/* Slide-in panel for Trip / Layers. Placeholder content until the offline
-          .pcbundle loader lands — then these populate from the carried trip. */}
+      {/* Slide-in panel for Trip / Layers, populated from the loaded bundle. */}
       {panel && (
         <View style={styles.panel}>
           <View style={styles.panelHeader}>
-            <Text style={styles.panelTitle}>{panel === 'trip' ? 'Current trip' : 'Map layers'}</Text>
+            <Text style={styles.panelTitle}>{panel === 'trip' ? manifest.trip.name : 'Map layers'}</Text>
             <TouchableOpacity onPress={() => setPanel(null)} accessibilityLabel="Close">
               <Text style={styles.panelClose}>✕</Text>
             </TouchableOpacity>
           </View>
+
           {panel === 'trip' ? (
-            <Text style={styles.panelBody}>
-              No trip loaded yet.{'\n\n'}Export a trip from the desktop app and AirDrop the
-              .pcbundle to this phone to carry your saved spots, notes, and the scored map —
-              all offline.
-            </Text>
+            <View>
+              <Text style={styles.panelMeta}>
+                Looking for {manifest.scored_areas.target} · {manifest.trip.waypoints.length} spot
+                {manifest.trip.waypoints.length === 1 ? '' : 's'} · {manifest.scored_areas.count} scored cells
+              </Text>
+              <ScrollView style={styles.wpList}>
+                {manifest.trip.waypoints.length === 0 && (
+                  <Text style={styles.panelBody}>No saved spots in this trip yet.</Text>
+                )}
+                {manifest.trip.waypoints.map((w) => (
+                  <TouchableOpacity key={w.id} style={styles.wpRow} onPress={() => jumpToWaypoint(w)}>
+                    <Text style={styles.wpTitle}>{w.title || w.kind || `Spot ${w.id}`}</Text>
+                    {!!w.note && <Text style={styles.wpNote} numberOfLines={1}>{w.note}</Text>}
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
           ) : (
-            <Text style={styles.panelBody}>
-              Layers arrive with your trip bundle: mines, rivers, land status, and the
-              engine&apos;s scored spots.{'\n\n'}None are loaded yet — bring a trip over to
-              switch them on here.
-            </Text>
+            <View>
+              <LayerToggle label="Terrain basemap" on={vis.basemap} disabled={!basemapMbtilesUrl} onPress={() => toggleVis('basemap')} />
+              <LayerToggle label="Scored areas" on={vis.scored} onPress={() => toggleVis('scored')} />
+              <LayerToggle label="Saved spots" on={vis.waypoints} onPress={() => toggleVis('waypoints')} />
+              {!basemapMbtilesUrl && (
+                <Text style={styles.panelMeta}>This bundle carried no basemap — only the scored areas and spots are shown.</Text>
+              )}
+            </View>
           )}
         </View>
       )}
@@ -196,10 +366,37 @@ export default function App() {
   )
 }
 
+function LayerToggle({
+  label,
+  on,
+  onPress,
+  disabled,
+}: {
+  label: string
+  on: boolean
+  onPress: () => void
+  disabled?: boolean
+}) {
+  return (
+    <TouchableOpacity
+      style={[styles.toggleRow, disabled && styles.fabDisabled]}
+      onPress={onPress}
+      disabled={disabled}
+    >
+      <Text style={styles.toggleLabel}>{label}</Text>
+      <Text style={[styles.toggleState, on && styles.toggleStateOn]}>{on ? 'On' : 'Off'}</Text>
+    </TouchableOpacity>
+  )
+}
+
 const FAB = 52
 const styles = StyleSheet.create({
   root: { flex: 1 },
   map: { flex: 1 },
+
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#0e1726', padding: 24 },
+  centerTitle: { color: '#ffffff', fontWeight: '700', fontSize: 18, marginBottom: 8 },
+  centerText: { color: '#cbd5e1', fontSize: 14, textAlign: 'center', marginTop: 8 },
 
   fab: {
     position: 'absolute',
@@ -217,7 +414,6 @@ const styles = StyleSheet.create({
   },
   fabDisabled: { opacity: 0.5 },
   fabIcon: { fontSize: 22 },
-  fabIconMuted: { color: '#64748b', fontSize: 20, fontWeight: '700' },
   topLeft: { top: 60, left: 16 },
   topRight: { top: 60, right: 16 },
   bottomRight: { bottom: 48, right: 16 },
@@ -241,12 +437,31 @@ const styles = StyleSheet.create({
     left: 16,
     right: 16,
     bottom: 116,
+    maxHeight: 360,
     backgroundColor: 'rgba(14,23,38,0.96)',
     borderRadius: 16,
     padding: 18,
   },
   panelHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
-  panelTitle: { color: '#ffffff', fontWeight: '700', fontSize: 16 },
+  panelTitle: { color: '#ffffff', fontWeight: '700', fontSize: 16, flexShrink: 1, paddingRight: 8 },
   panelClose: { color: '#cbd5e1', fontSize: 18, paddingHorizontal: 6 },
   panelBody: { color: '#cbd5e1', fontSize: 14, lineHeight: 20 },
+  panelMeta: { color: '#94a3b8', fontSize: 12, marginBottom: 10, lineHeight: 17 },
+
+  wpList: { maxHeight: 250 },
+  wpRow: { paddingVertical: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(148,163,184,0.25)' },
+  wpTitle: { color: '#e2e8f0', fontSize: 15, fontWeight: '600' },
+  wpNote: { color: '#94a3b8', fontSize: 12, marginTop: 2 },
+
+  toggleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(148,163,184,0.25)',
+  },
+  toggleLabel: { color: '#e2e8f0', fontSize: 15 },
+  toggleState: { color: '#64748b', fontSize: 14, fontWeight: '700' },
+  toggleStateOn: { color: '#34d399' },
 })
