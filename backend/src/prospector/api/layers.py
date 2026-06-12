@@ -131,14 +131,22 @@ def get_layer(
 
     where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
 
-    # Clip layers return only the slice of each geometry inside the viewport box
-    # (keeps the payload small for long lines) at reduced coord precision (~0.1 m);
-    # others return full geometry at full precision.
-    geojson = (
-        f"ST_AsGeoJSON(ST_ClipByBox2D(t.geom, {env}), 6)::jsonb"
-        if name in _CLIP_LAYERS
-        else "ST_AsGeoJSON(t.geom)::jsonb"
-    )
+    # Geometry serialization, by case:
+    #  - Clip layers (long lines): return only the slice inside the viewport box.
+    #  - Other layers WITH a bbox: simplify to ~1px at the requested viewport so a
+    #    zoomed-out (wide-bbox) request doesn't ship full-resolution geometry — at
+    #    state scale that is tens of MB. The tolerance scales with the bbox width,
+    #    so a tight (zoomed-in) bbox is sub-pixel and leaves geometry essentially
+    #    untouched, while a wide one drops detail no one can see at that zoom.
+    #  - No bbox (whole-region pull): full geometry, full precision (unchanged).
+    # Both bbox paths trim coordinate precision to ~0.1 m (6 dp), plenty here.
+    if name in _CLIP_LAYERS:
+        geojson = f"ST_AsGeoJSON(ST_ClipByBox2D(t.geom, {env}), 6)::jsonb"
+    elif bbox:
+        params["tol"] = (maxx - minx) / 1500.0
+        geojson = "ST_AsGeoJSON(ST_SimplifyPreserveTopology(t.geom, :tol), 6)::jsonb"
+    else:
+        geojson = "ST_AsGeoJSON(t.geom)::jsonb"
 
     # table/where/geojson are server-controlled (whitelist + fixed strings); values are bound.
     sql = text(

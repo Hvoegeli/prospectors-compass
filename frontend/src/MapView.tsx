@@ -13,6 +13,15 @@ const TILE_BASE = import.meta.env.VITE_TILE_BASE ?? 'http://localhost:8080'
 const CENTER: [number, number] = [-106.4, 39.3]
 const ZOOM = 6.6
 
+// How far out the user may zoom/pan: the whole state the counties sit in (not
+// just the mapped counties). v1 is Colorado-only; when the download region
+// becomes multi-state this should come from the chosen state's extent.
+// [[west, south], [east, north]] — Colorado's official bounding box.
+const STATE_BOUNDS: maplibregl.LngLatBoundsLike = [
+  [-109.06, 36.99],
+  [-102.04, 41.01],
+]
+
 // Self-hosted hillshade basemap (TileServer GL) under a dark fallback background.
 // If hillshade.mbtiles isn't built yet, the raster tiles 404 (render transparent)
 // and the dark background shows through — the map still works.
@@ -27,10 +36,15 @@ const BASE_STYLE: StyleSpecification = {
       type: 'raster',
       tiles: [`${TILE_BASE}/data/hillshade/{z}/{x}/{y}.png`],
       tileSize: 256,
-      // The baked hillshade only goes to z12; declare it so MapLibre overzooms
-      // (stretches z12 tiles) past that instead of requesting nonexistent z13+
-      // tiles — which 404'd by the thousand and left deep zoom black.
+      // The baked hillshade covers only z6–z12 over the Colorado region. Declaring
+      // both the zoom range AND the bounds stops MapLibre from requesting tiles it
+      // can never get — below z6, above z12, or outside the region (e.g. when zoomed
+      // out to the whole state). Without these it 404'd by the hundred (harmless,
+      // but it buries real errors); maxzoom also makes it overzoom z12 past z12
+      // instead of going black at deep zoom.
+      minzoom: 6,
       maxzoom: 12,
+      bounds: [-110.002, 37.998, -103.998, 41.002],
       attribution: 'Elevation: USGS 3DEP',
     },
   },
@@ -173,7 +187,11 @@ function potentialFilter(target: string): maplibregl.FilterSpecification {
   return ['>', ['coalesce', ['get', target], 0], 0]
 }
 // An always-false filter — hides a layer that has no data for the current target.
-const HIDE_ALL: maplibregl.FilterSpecification = ['==', 1, 0]
+// Must be written as an EXPRESSION, not the legacy form `['==', 1, 0]`: MapLibre
+// reads `['==', <x>, …]` as a legacy filter where <x> must be a property NAME
+// (string), so a bare number there throws "filter[1]: string expected, number
+// found". Wrapping the operand in `['literal', …]` forces expression parsing.
+const HIDE_ALL: maplibregl.FilterSpecification = ['==', ['literal', 1], 0]
 
 // --- Land ownership grouped by what matters for prospecting: access ----------
 type OwnershipGroup = { label: string; short: string; color: string; managers: string[] }
@@ -1405,18 +1423,19 @@ export default function MapView() {
         renderWaypointPins(activeTripRef.current)
       }
 
-      // Pin the view to the mapped area — can't pan or zoom out past it. Derived
-      // from the counties extent, so adding counties widens the bounds for free.
+      // Let the user zoom/pan out to the whole STATE (can't go past it), but
+      // still OPEN framed on the mapped counties — the working area — derived
+      // from the counties extent so adding counties reframes the start view free.
       if (countiesData && countiesData.features.length) {
         const [w, s, e, n] = fcBounds(countiesData)
         const padX = (e - w) * 0.04 || 0.1
         const padY = (n - s) * 0.04 || 0.1
-        const bounds: maplibregl.LngLatBoundsLike = [
+        const countyBounds: maplibregl.LngLatBoundsLike = [
           [w - padX, s - padY],
           [e + padX, n + padY],
         ]
-        map.setMaxBounds(bounds)
-        map.fitBounds(bounds, { animate: false, padding: 8 })
+        map.setMaxBounds(STATE_BOUNDS)
+        map.fitBounds(countyBounds, { animate: false, padding: 8 })
       } else {
         // Zoom-lock is derived from the counties extent; without it the view
         // can't be bounded. Warn rather than fail silently (counties also shows
