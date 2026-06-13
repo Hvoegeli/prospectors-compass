@@ -291,8 +291,11 @@ export default function App() {
           </RasterSource>
         )}
 
-        {/* Engine scored cells — warmer = higher score (matches the desktop heat
-            surface). Tap a cell to see its factor-by-factor rationale. */}
+        {/* Engine scored cells, painted with the SAME "Magma" heat ramp as the
+            desktop (frontend recommendColor): bright/pale = higher score, dark
+            purple = low. Floors at score 15 (the engine min_score), opacity 0.6.
+            Mirrored here verbatim so both surfaces read identically. Tap a cell to
+            see its factor-by-factor rationale. */}
         <GeoJSONSource id="scored" data={cellsFC} onPress={onScoredPress}>
           <Layer
             id="scored-fill"
@@ -301,10 +304,10 @@ export default function App() {
             paint={{
               'fill-color': [
                 'interpolate', ['linear'], ['get', 'score'],
-                0, '#fde68a', 50, '#f59e0b', 100, '#b45309',
+                15, '#3b0f70', 35, '#8c2981', 55, '#de4968', 75, '#fe9f6d', 100, '#fcfdbf',
               ],
-              'fill-opacity': 0.45,
-              'fill-outline-color': '#92400e',
+              'fill-opacity': 0.6,
+              'fill-outline-color': 'rgba(15,23,42,0.25)',
             }}
           />
           {/* Bright outline on the tapped cell so you can see which one the
