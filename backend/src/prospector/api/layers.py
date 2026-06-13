@@ -52,6 +52,12 @@ _CLIP_LAYERS: set[str] = {"contours"}
 # facet list and the filter, so "Gold" matches a "Gold, Silver" site.
 _COMMOD_TOKENS = "string_to_array(concat_ws(', ', t.commod1, t.commod2, t.commod3), ', ')"
 
+# Low-information commodity tokens hidden from the "Looking for" dropdown. MRDS
+# tags some sites with only a vague "General" or "Metal" (no specific commodity),
+# which is useless as a prospecting target. Compared case-insensitively. These
+# stay valid as filter values if passed directly — we just don't offer them.
+_HIDDEN_COMMODITIES: frozenset[str] = frozenset({"general", "metal"})
+
 
 @router.get("")
 def list_layers() -> dict[str, list[str]]:
@@ -76,7 +82,10 @@ def mrds_facets() -> dict[str, list[str]]:
         "WHERE dep_type IS NOT NULL AND dep_type <> '' ORDER BY dt"
     )
     with engine.connect() as conn:
-        commodities = [r[0] for r in conn.execute(commod_sql)]
+        commodities = [
+            r[0] for r in conn.execute(commod_sql)
+            if r[0].lower() not in _HIDDEN_COMMODITIES
+        ]
         deposit_types = [r[0] for r in conn.execute(dep_sql)]
     return {"commodities": commodities, "deposit_types": deposit_types}
 
