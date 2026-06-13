@@ -26,6 +26,27 @@ export type Waypoint = {
   details?: string
 }
 
+// One weighted-overlay factor that fed a cell's score. `contribution` is already
+// weight x membership, and ALL factors' contributions sum to score/100 — so
+// `contribution * 100` reads directly as "points this factor added to the 0-100
+// score" (the field-friendly way to show the rationale).
+export type ScoreFactor = {
+  name: string
+  label: string
+  raw: string
+  membership: number
+  weight: number
+  contribution: number
+}
+
+// A pass/fail gate (land ownership, active claims). `gate` is a multiplier on the
+// score: 1.0 = open/passes, < 1.0 = restricted and knocks the score down.
+export type ScoreGate = {
+  name: string
+  gate: number
+  raw: string
+}
+
 // One scored grid cell from the engine. `geometry` is a GeoJSON Polygon encoded
 // as a STRING (the desktop serializes it that way); we parse it when building the
 // map's FeatureCollection. `factors`/`gates` are the "why it scored" breakdown.
@@ -35,8 +56,8 @@ export type ScoredCell = {
   geometry: string
   score: number
   band?: string
-  factors?: Record<string, unknown>
-  gates?: Record<string, unknown>
+  factors?: ScoreFactor[]
+  gates?: ScoreGate[]
 }
 
 export type TripManifest = {
@@ -128,22 +149,27 @@ export async function loadTripBundle(): Promise<LoadedTrip> {
 // Build the map overlays from the manifest. Kept here (not in the component) so
 // the parsing/shape logic is unit-testable and the component stays declarative.
 
-/** Scored cells → a Polygon FeatureCollection carrying score + band for styling. */
+/** Scored cells → a Polygon FeatureCollection carrying score + band for styling.
+ *  Each feature also carries `idx`, its position in `manifest.scored_areas.cells`,
+ *  so a map tap can look the FULL cell (factors/gates) back up in memory — the
+ *  rich rationale objects don't survive the native press round-trip, but a plain
+ *  integer index does. `idx` is the original cell index (skipped malformed cells
+ *  don't shift it), so the lookup stays correct. */
 export function scoredCellsFC(manifest: TripManifest): GeoJSON.FeatureCollection {
   const features: GeoJSON.Feature[] = []
-  for (const cell of manifest.scored_areas.cells) {
+  manifest.scored_areas.cells.forEach((cell, idx) => {
     let geometry: GeoJSON.Geometry
     try {
       geometry = JSON.parse(cell.geometry) as GeoJSON.Geometry
     } catch {
-      continue // skip a malformed cell rather than crash the whole map
+      return // skip a malformed cell rather than crash the whole map
     }
     features.push({
       type: 'Feature',
       geometry,
-      properties: { score: cell.score, band: cell.band ?? '' },
+      properties: { idx, score: cell.score, band: cell.band ?? '' },
     })
-  }
+  })
   return { type: 'FeatureCollection', features }
 }
 

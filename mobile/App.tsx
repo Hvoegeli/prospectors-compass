@@ -23,6 +23,7 @@ import {
   scoredCellsFC,
   waypointsFC,
   type LoadedTrip,
+  type ScoredCell,
   type Waypoint,
 } from './src/bundle'
 
@@ -30,6 +31,33 @@ import {
 // before a footprint is known (we normally gate on the trip loading first).
 const FALLBACK_CENTER: [number, number] = [-106.4, 39.3]
 const FOLLOW_ZOOM = 14
+
+// GPS power policy (battery-conservative defaults, per the field spec). While
+// idle we track at a coarse accuracy on a slow cadence so the GPS chip can sleep
+// between fixes — that duty-cycling, not switching positioning tech, is what
+// actually saves power in the backcountry (the lower tiers' wifi/cell assist is
+// moot with no signal, so they fall back to GPS anyway). When precision matters
+// (center-on-me, and later logging a find) we pull ONE fresh high-accuracy fix.
+const IDLE_ACCURACY = Location.Accuracy.Balanced
+const IDLE_DISTANCE_M = 25
+const IDLE_INTERVAL_MS = 20_000
+const PRECISE_ACCURACY = Location.Accuracy.High
+
+// Canonical land-status disclaimer, mirrored verbatim from the backend
+// (api/land_status.py). Per CLAUDE.md, any surface that shows land status MUST
+// carry it unchanged — a scored cell's gates include ownership/claim status, so
+// the rationale card always renders it. Do not edit or soften this text.
+const LAND_STATUS_DISCLAIMER =
+  'Informational only — not a legal determination of ownership, access, or the ' +
+  'right to prospect or collect. Boundaries are approximate and may be out of ' +
+  'date. Always verify on the ground and get landowner or agency permission ' +
+  'before entering or digging.'
+
+// Turn an engine key like "active_claims" into a readable "Active claims".
+function humanize(name: string): string {
+  const s = name.replace(/_/g, ' ').trim()
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : s
+}
 
 // Offline base style: no remote fetch (we're offline-first). The dark background
 // shows through anywhere the bundled hillshade has no tiles. The real basemap is
@@ -54,6 +82,13 @@ export default function App() {
   const [trip, setTrip] = useState<LoadedTrip | null>(null)
   const [tripError, setTripError] = useState<string | null>(null)
   const [vis, setVis] = useState<LayerVis>({ basemap: true, scored: true, waypoints: true })
+
+  // Index (into manifest.scored_areas.cells) of the scored cell the user tapped,
+  // or null. We key off the index rather than the tapped feature's properties
+  // because the rich factors/gates objects don't survive the native press
+  // round-trip — only the plain `idx` integer does — so we re-look-up the full
+  // cell in memory to render its rationale.
+  const [selectedIdx, setSelectedIdx] = useState<number | null>(null)
 
   const subRef = useRef<Location.LocationSubscription | null>(null)
   const cameraRef = useRef<CameraRef>(null)
@@ -92,7 +127,7 @@ export default function App() {
       // One-shot fix first: watchPositionAsync's first event can lag (it waits
       // for movement — badly so on a static simulator location).
       try {
-        const first = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High })
+        const first = await Location.getCurrentPositionAsync({ accuracy: PRECISE_ACCURACY })
         if (active) {
           setFix({ lon: first.coords.longitude, lat: first.coords.latitude, accuracy: first.coords.accuracy })
         }
@@ -100,8 +135,10 @@ export default function App() {
         // No immediate fix — the watcher below will deliver one when it can.
       }
       if (!active) return
+      // Idle tracking is intentionally coarse and slow (battery): the dot stays
+      // roughly current, and center-on-me grabs a precise fix on demand.
       const sub = await Location.watchPositionAsync(
-        { accuracy: Location.Accuracy.High, distanceInterval: 5, timeInterval: 2000 },
+        { accuracy: IDLE_ACCURACY, distanceInterval: IDLE_DISTANCE_M, timeInterval: IDLE_INTERVAL_MS },
         (loc) => {
           if (!active) return
           setFix({ lon: loc.coords.longitude, lat: loc.coords.latitude, accuracy: loc.coords.accuracy })
@@ -122,6 +159,12 @@ export default function App() {
   // Derive the map overlays from the manifest once (not on every render).
   const cellsFC = useMemo(() => (trip ? scoredCellsFC(trip.manifest) : null), [trip])
   const wpsFC = useMemo(() => (trip ? waypointsFC(trip.manifest) : null), [trip])
+
+  // The full tapped cell (with its factors/gates), looked up by index in memory.
+  const selectedCell = useMemo<ScoredCell | null>(() => {
+    if (selectedIdx == null || !trip) return null
+    return trip.manifest.scored_areas.cells[selectedIdx] ?? null
+  }, [selectedIdx, trip])
   const footprintCenter = useMemo<[number, number]>(() => {
     if (!trip) return FALLBACK_CENTER
     const [minLon, minLat, maxLon, maxLat] = trip.manifest.footprint.bbox
@@ -162,8 +205,32 @@ export default function App() {
     }
   }
 
-  function centerOnMe(): void {
-    if (fix) easeToFix(fix, 500)
+  // Idle tracking is coarse to save battery, so when the user explicitly asks to
+  // center we spend one fresh high-accuracy fix to land precisely on them.
+  async function centerOnMe(): Promise<void> {
+    let target = fix
+    try {
+      const p = await Location.getCurrentPositionAsync({ accuracy: PRECISE_ACCURACY })
+      target = { lon: p.coords.longitude, lat: p.coords.latitude, accuracy: p.coords.accuracy }
+      setFix(target)
+    } catch {
+      // No fresh fix right now — fall back to the last known position.
+    }
+    if (target) easeToFix(target, 500)
+  }
+
+  // A tap on the scored heat surface: pull the cell's index off the pressed
+  // feature and open its rationale. Close any open trip/layers panel so the two
+  // bottom cards never fight for the same space.
+  function onScoredPress(e: { nativeEvent?: { features?: GeoJSON.Feature[] } }): void {
+    // Coerce defensively: the native bridge normally preserves `idx` as a number,
+    // but accept a stringified one too so the tap never silently no-ops.
+    const raw = e.nativeEvent?.features?.[0]?.properties?.idx
+    const idx = typeof raw === 'string' ? Number.parseInt(raw, 10) : raw
+    if (typeof idx === 'number' && Number.isInteger(idx)) {
+      setSelectedIdx(idx)
+      setPanel(null)
+    }
   }
 
   function jumpToWaypoint(w: Waypoint): void {
@@ -224,8 +291,9 @@ export default function App() {
           </RasterSource>
         )}
 
-        {/* Engine scored cells — warmer = higher score (matches the desktop heat surface). */}
-        <GeoJSONSource id="scored" data={cellsFC}>
+        {/* Engine scored cells — warmer = higher score (matches the desktop heat
+            surface). Tap a cell to see its factor-by-factor rationale. */}
+        <GeoJSONSource id="scored" data={cellsFC} onPress={onScoredPress}>
           <Layer
             id="scored-fill"
             type="fill"
@@ -238,6 +306,15 @@ export default function App() {
               'fill-opacity': 0.45,
               'fill-outline-color': '#92400e',
             }}
+          />
+          {/* Bright outline on the tapped cell so you can see which one the
+              rationale card describes. Matches nothing when idx is -1 (none selected). */}
+          <Layer
+            id="scored-selected"
+            type="line"
+            filter={['==', ['get', 'idx'], selectedIdx ?? -1]}
+            layout={{ visibility: vis.scored ? 'visible' : 'none' }}
+            paint={{ 'line-color': '#f8fafc', 'line-width': 2.5 }}
           />
         </GeoJSONSource>
 
@@ -263,7 +340,10 @@ export default function App() {
       {/* Top-left: the trip you're working on */}
       <TouchableOpacity
         style={[styles.fab, styles.topLeft]}
-        onPress={() => setPanel((p) => (p === 'trip' ? null : 'trip'))}
+        onPress={() => {
+          setSelectedIdx(null)
+          setPanel((p) => (p === 'trip' ? null : 'trip'))
+        }}
         accessibilityLabel="View current trip"
       >
         <Text style={styles.fabIcon}>📋</Text>
@@ -272,7 +352,10 @@ export default function App() {
       {/* Top-right: which overlays are shown */}
       <TouchableOpacity
         style={[styles.fab, styles.topRight]}
-        onPress={() => setPanel((p) => (p === 'layers' ? null : 'layers'))}
+        onPress={() => {
+          setSelectedIdx(null)
+          setPanel((p) => (p === 'layers' ? null : 'layers'))
+        }}
         accessibilityLabel="Map layers"
       >
         <Text style={styles.fabIcon}>🗂️</Text>
@@ -360,6 +443,64 @@ export default function App() {
               )}
             </View>
           )}
+        </View>
+      )}
+
+      {/* Rationale card: WHY a tapped cell scored what it did. The factors come
+          straight from the engine (deterministic, factor-by-factor), honoring the
+          project rule that a recommendation must always show its evidence. */}
+      {selectedCell && (
+        <View style={styles.panel}>
+          <View style={styles.panelHeader}>
+            <Text style={styles.panelTitle}>Why this scored {Math.round(selectedCell.score)}</Text>
+            <TouchableOpacity onPress={() => setSelectedIdx(null)} accessibilityLabel="Close">
+              <Text style={styles.panelClose}>✕</Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.panelMeta}>
+            {selectedCell.band ? `${humanize(selectedCell.band)} confidence · ` : ''}
+            looking for {manifest.scored_areas.target}
+          </Text>
+          {(selectedCell.factors ?? []).length > 0 && (
+            <Text style={styles.rationaleSub}>Each factor adds points, then access gates multiply.</Text>
+          )}
+          <ScrollView style={styles.wpList}>
+            {[...(selectedCell.factors ?? [])]
+              .sort((a, b) => b.contribution - a.contribution)
+              .map((f) => {
+                const pts = Math.round(f.contribution * 100)
+                return (
+                  <View key={f.name} style={styles.factorRow}>
+                    <View style={styles.factorHead}>
+                      <Text style={styles.factorLabel}>{f.label}</Text>
+                      <Text style={styles.factorPts}>{pts > 0 ? `+${pts}` : '0'} pts</Text>
+                    </View>
+                    <Text style={styles.factorRaw}>{f.raw}</Text>
+                  </View>
+                )
+              })}
+            {(selectedCell.factors ?? []).length === 0 && (
+              <Text style={styles.panelBody}>No factor breakdown recorded for this cell.</Text>
+            )}
+
+            {(selectedCell.gates ?? []).length > 0 && (
+              <View>
+                <Text style={styles.gateHeading}>Land status</Text>
+                {(selectedCell.gates ?? []).map((g) => (
+                  <View key={g.name} style={styles.factorRow}>
+                    <View style={styles.factorHead}>
+                      <Text style={styles.factorLabel}>{humanize(g.name)}</Text>
+                      <Text style={[styles.gateState, g.gate >= 1 ? styles.gateOpen : styles.gateRestricted]}>
+                        ×{g.gate}
+                      </Text>
+                    </View>
+                    <Text style={styles.factorRaw}>{g.raw}</Text>
+                  </View>
+                ))}
+                <Text style={styles.landDisc}>{LAND_STATUS_DISCLAIMER}</Text>
+              </View>
+            )}
+          </ScrollView>
         </View>
       )}
     </View>
@@ -464,4 +605,17 @@ const styles = StyleSheet.create({
   toggleLabel: { color: '#e2e8f0', fontSize: 15 },
   toggleState: { color: '#64748b', fontSize: 14, fontWeight: '700' },
   toggleStateOn: { color: '#34d399' },
+
+  rationaleSub: { color: '#cbd5e1', fontSize: 12, marginBottom: 4, lineHeight: 16 },
+  factorRow: { paddingVertical: 9, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(148,163,184,0.25)' },
+  factorHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  factorLabel: { color: '#e2e8f0', fontSize: 14, fontWeight: '600', flexShrink: 1, paddingRight: 8 },
+  factorPts: { color: '#fbbf24', fontSize: 13, fontWeight: '700' },
+  factorRaw: { color: '#94a3b8', fontSize: 12, marginTop: 2, lineHeight: 16 },
+
+  gateHeading: { color: '#cbd5e1', fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 14 },
+  gateState: { fontSize: 13, fontWeight: '700' },
+  gateOpen: { color: '#34d399' },
+  gateRestricted: { color: '#f87171' },
+  landDisc: { color: '#94a3b8', fontSize: 11, fontStyle: 'italic', lineHeight: 15, marginTop: 10 },
 })
