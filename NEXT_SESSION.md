@@ -24,6 +24,14 @@ All committed on `feat/mobile-field-app`:
 3. **`feat(mobile)`** — the two field-app features below (E + F).
 4. **`docs(mobile)`** — fixed `mobile/AGENTS.md` to point at the Expo **SDK 54** docs
    (it still said v56 after the downgrade).
+5. **`fix(mobile)`** — aligned the mobile scored heat ramp to the desktop's Magma ramp
+   (it was an amber ramp, perceptually inverted: high score read as dark, not bright).
+
+**Verified live in the iOS simulator (2026-06-12):** clean build, the rationale card
+(factors, +pts, the partial-gate `×0.5` math, and the land-status disclaimer), the
+battery-conservative GPS picking up a new fix, center-on-me, and zoom gestures. The Magma
+ramp was confirmed on-device. Note: in the simulator, pinch-zoom needs Option + drag (real
+devices pinch normally); double-tap zooms in with one finger.
 
 ### E — Tap a scored cell for its rationale
 Tapping any scored area on the phone now opens a card with the engine's factor-by-factor
