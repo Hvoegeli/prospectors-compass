@@ -45,6 +45,10 @@ const IDLE_ACCURACY = Location.Accuracy.Balanced
 const IDLE_DISTANCE_M = 25
 const IDLE_INTERVAL_MS = 20_000
 const PRECISE_ACCURACY = Location.Accuracy.High
+// Cap on-demand precise fixes: getCurrentPositionAsync has no timeout of its own
+// and can stall for a long time under poor sky view (canyon/canopy) — exactly
+// the field condition this app runs in. After this we fall back to the last fix.
+const GPS_FIX_TIMEOUT_MS = 8_000
 
 // Canonical land-status disclaimer, mirrored verbatim from the backend
 // (api/land_status.py). Per CLAUDE.md, any surface that shows land status MUST
@@ -55,6 +59,21 @@ const LAND_STATUS_DISCLAIMER =
   'right to prospect or collect. Boundaries are approximate and may be out of ' +
   'date. Always verify on the ground and get landowner or agency permission ' +
   'before entering or digging.'
+
+// Resolve a promise but give up after `ms`, yielding null instead of hanging.
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | null> {
+  let timer: ReturnType<typeof setTimeout>
+  const timeout = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), ms)
+  })
+  return Promise.race([
+    p.then((v) => {
+      clearTimeout(timer)
+      return v
+    }),
+    timeout,
+  ])
+}
 
 // Turn an engine key like "active_claims" into a readable "Active claims".
 function humanize(name: string): string {
@@ -269,7 +288,11 @@ export default function App() {
   // battery). Updates the live fix and returns it, or null if none is available.
   async function getPreciseFix(): Promise<Fix | null> {
     try {
-      const p = await Location.getCurrentPositionAsync({ accuracy: PRECISE_ACCURACY })
+      const p = await withTimeout(
+        Location.getCurrentPositionAsync({ accuracy: PRECISE_ACCURACY }),
+        GPS_FIX_TIMEOUT_MS,
+      )
+      if (!p) return null // timed out — caller falls back to the last known fix
       const f: Fix = { lon: p.coords.longitude, lat: p.coords.latitude, accuracy: p.coords.accuracy }
       setFix(f)
       return f
