@@ -452,73 +452,56 @@ export default function App() {
         <UserLocation />
       </Map>
 
-      {/* Top-left: the trip you're working on */}
-      <TouchableOpacity
-        style={[styles.fab, styles.topLeft]}
-        onPress={() => {
-          setSelectedIdx(null)
-          setPanel((p) => (p === 'trip' ? null : 'trip'))
-        }}
-        accessibilityLabel="View current trip"
-      >
-        <Text style={styles.fabIcon}>📋</Text>
-      </TouchableOpacity>
-
-      {/* Top-right: which overlays are shown */}
-      <TouchableOpacity
-        style={[styles.fab, styles.topRight]}
-        onPress={() => {
-          setSelectedIdx(null)
-          setPanel((p) => (p === 'layers' ? null : 'layers'))
-        }}
-        accessibilityLabel="Map layers"
-      >
-        <Text style={styles.fabIcon}>🗂️</Text>
-      </TouchableOpacity>
-
-      {/* Bottom-right: recenter on the user's GPS position */}
-      <TouchableOpacity
-        style={[styles.fab, styles.bottomRight, !fix && styles.fabDisabled]}
-        onPress={centerOnMe}
-        disabled={!fix}
-        accessibilityLabel="Center map on my location"
-      >
-        <Text style={styles.fabIcon}>📍</Text>
-      </TouchableOpacity>
-
-      {/* Bottom-left: frame the whole trip footprint */}
-      <TouchableOpacity
-        style={[styles.fab, styles.bottomLeft]}
-        onPress={() => {
-          didFit.current = false
-          const cam = cameraRef.current
-          if (cam) {
-            try {
-              cam.fitBounds(manifest.footprint.bbox)
-              didFit.current = true
-            } catch {
-              // ignore if not ready
+      {/* Bottom control bar — every action in one row. The emerald Log-find
+          (primary field-capture action) sits dead center, per the layout. */}
+      <View style={styles.bottomBar}>
+        <BarButton
+          icon="📋"
+          label="Trip"
+          active={panel === 'trip'}
+          onPress={() => {
+            setSelectedIdx(null)
+            setPanel((p) => (p === 'trip' ? null : 'trip'))
+          }}
+        />
+        <BarButton
+          icon="🗂️"
+          label="Layers"
+          active={panel === 'layers'}
+          onPress={() => {
+            setSelectedIdx(null)
+            setPanel((p) => (p === 'layers' ? null : 'layers'))
+          }}
+        />
+        <BarButton
+          icon="＋"
+          label="Log find"
+          primary
+          active={panel === 'logFind'}
+          disabled={!fix}
+          onPress={() => {
+            setSelectedIdx(null)
+            setPanel((p) => (p === 'logFind' ? null : 'logFind'))
+          }}
+        />
+        <BarButton icon="📍" label="Center" disabled={!fix} onPress={centerOnMe} />
+        <BarButton
+          icon="🗺️"
+          label="Overview"
+          onPress={() => {
+            didFit.current = false
+            const cam = cameraRef.current
+            if (cam) {
+              try {
+                cam.fitBounds(manifest.footprint.bbox)
+                didFit.current = true
+              } catch {
+                // ignore if not ready
+              }
             }
-          }
-        }}
-        accessibilityLabel="Frame the whole trip"
-      >
-        <Text style={styles.fabIcon}>🗺️</Text>
-      </TouchableOpacity>
-
-      {/* Bottom-center: log a find at the current GPS position — the primary
-          field-capture action, so it gets the prominent emerald button. */}
-      <TouchableOpacity
-        style={[styles.fab, styles.fabPrimary, styles.bottomCenter, !fix && styles.fabDisabled]}
-        onPress={() => {
-          setSelectedIdx(null)
-          setPanel((p) => (p === 'logFind' ? null : 'logFind'))
-        }}
-        disabled={!fix}
-        accessibilityLabel="Log a find at my location"
-      >
-        <Text style={styles.fabPrimaryIcon}>＋</Text>
-      </TouchableOpacity>
+          }}
+        />
+      </View>
 
       {/* Top-center status pill: app name + live GPS readout */}
       <View style={styles.pill} pointerEvents="none">
@@ -715,7 +698,41 @@ function LayerToggle({
   )
 }
 
-const FAB = 52
+// One control in the bottom bar: an icon (in a round well) over a small label.
+// `primary` gives the emerald filled well (the Log-find capture action); `active`
+// tints the well/label when that button's panel is open.
+function BarButton({
+  icon,
+  label,
+  onPress,
+  active,
+  disabled,
+  primary,
+}: {
+  icon: string
+  label: string
+  onPress: () => void
+  active?: boolean
+  disabled?: boolean
+  primary?: boolean
+}) {
+  return (
+    <TouchableOpacity style={styles.barBtn} onPress={onPress} disabled={disabled} accessibilityLabel={label}>
+      <View
+        style={[
+          styles.barIconWell,
+          primary && styles.barIconWellPrimary,
+          active && !primary && styles.barIconWellActive,
+          disabled && styles.barDisabled,
+        ]}
+      >
+        <Text style={primary ? styles.barIconPrimary : styles.barIcon}>{icon}</Text>
+      </View>
+      <Text style={[styles.barLabel, active && styles.barLabelActive, disabled && styles.barDisabled]}>{label}</Text>
+    </TouchableOpacity>
+  )
+}
+
 const styles = StyleSheet.create({
   root: { flex: 1 },
   map: { flex: 1 },
@@ -724,29 +741,33 @@ const styles = StyleSheet.create({
   centerTitle: { color: '#ffffff', fontWeight: '700', fontSize: 18, marginBottom: 8 },
   centerText: { color: '#cbd5e1', fontSize: 14, textAlign: 'center', marginTop: 8 },
 
-  fab: {
-    position: 'absolute',
-    width: FAB,
-    height: FAB,
-    borderRadius: FAB / 2,
-    backgroundColor: '#ffffff',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 4,
-  },
   fabDisabled: { opacity: 0.5 },
-  fabIcon: { fontSize: 22 },
-  fabPrimary: { backgroundColor: '#34d399' },
-  fabPrimaryIcon: { fontSize: 30, color: '#06281e', fontWeight: '700', lineHeight: 32 },
-  topLeft: { top: 60, left: 16 },
-  topRight: { top: 60, right: 16 },
-  bottomRight: { bottom: 48, right: 16 },
-  bottomLeft: { bottom: 48, left: 16 },
-  bottomCenter: { bottom: 48, alignSelf: 'center' },
+
+  // Bottom control bar
+  bottomBar: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'flex-start',
+    backgroundColor: 'rgba(14,23,38,0.97)',
+    paddingTop: 8,
+    paddingBottom: 30,
+    paddingHorizontal: 6,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(148,163,184,0.25)',
+  },
+  barBtn: { flex: 1, alignItems: 'center', paddingTop: 2 },
+  barIconWell: { width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center' },
+  barIconWellActive: { backgroundColor: 'rgba(148,163,184,0.18)' },
+  barIconWellPrimary: { backgroundColor: '#34d399' },
+  barIcon: { fontSize: 22 },
+  barIconPrimary: { fontSize: 26, color: '#06281e', fontWeight: '700', lineHeight: 28 },
+  barDisabled: { opacity: 0.4 },
+  barLabel: { color: '#94a3b8', fontSize: 11, marginTop: 3 },
+  barLabelActive: { color: '#e2e8f0', fontWeight: '600' },
 
   pill: {
     position: 'absolute',
