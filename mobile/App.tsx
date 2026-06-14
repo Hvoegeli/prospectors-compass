@@ -15,6 +15,7 @@ import {
   GeoJSONSource,
   Layer,
   Map,
+  type MapRef,
   RasterSource,
   type StyleSpecification,
   UserLocation,
@@ -123,6 +124,7 @@ export default function App() {
 
   const subRef = useRef<Location.LocationSubscription | null>(null)
   const cameraRef = useRef<CameraRef>(null)
+  const mapRef = useRef<MapRef>(null)
   const didFit = useRef(false)
 
   // Load the offline trip bundle once on mount (unzips it into the documents dir
@@ -308,17 +310,28 @@ export default function App() {
     }
   }
 
-  // A tap on the scored heat surface: pull the cell's index off the pressed
-  // feature and open its rationale. Close any open trip/layers panel so the two
-  // bottom cards never fight for the same space.
-  function onScoredPress(e: { nativeEvent?: { features?: GeoJSON.Feature[] } }): void {
-    // Coerce defensively: the native bridge normally preserves `idx` as a number,
-    // but accept a stringified one too so the tap never silently no-ops.
-    const raw = e.nativeEvent?.features?.[0]?.properties?.idx
-    const idx = typeof raw === 'string' ? Number.parseInt(raw, 10) : raw
-    if (typeof idx === 'number' && Number.isInteger(idx)) {
-      setSelectedIdx(idx)
-      setPanel(null)
+  // Tap anywhere on the map: query the scored-fill layer directly at that pixel.
+  // We do NOT use the source's own onPress because that only fires when the
+  // scored layer is the topmost feature in a 44px hitbox — so a tap near a
+  // waypoint/find marker (which render ABOVE the cells) would be swallowed and
+  // the cell wouldn't select. queryRenderedFeatures({layers:['scored-fill']})
+  // ignores whatever is stacked on top, so every cell is tappable. Tapping a
+  // spot with no cell dismisses any open rationale card.
+  async function onMapPress(e: { nativeEvent?: { point?: [number, number] } }): Promise<void> {
+    const pt = e.nativeEvent?.point
+    if (!pt || !mapRef.current) return
+    try {
+      const feats = await mapRef.current.queryRenderedFeatures(pt, { layers: ['scored-fill'] })
+      const raw = feats?.[0]?.properties?.idx
+      const idx = typeof raw === 'string' ? Number.parseInt(raw, 10) : raw
+      if (typeof idx === 'number' && Number.isInteger(idx)) {
+        setSelectedIdx(idx)
+        setPanel(null)
+      } else {
+        setSelectedIdx(null) // tapped empty space — close any open rationale card
+      }
+    } catch {
+      // query failed (map not ready) — ignore
     }
   }
 
@@ -366,7 +379,7 @@ export default function App() {
           default ornaments (they sat UNDER the buttons), and the basemap is
           self-hosted public-domain USGS data, so no third-party attribution is
           owed. Data provenance lives in docs/DATA_SOURCES.md. */}
-      <Map style={styles.map} mapStyle={OFFLINE_STYLE} logo={false} attribution={false}>
+      <Map ref={mapRef} style={styles.map} mapStyle={OFFLINE_STYLE} logo={false} attribution={false} onPress={onMapPress}>
         <Camera ref={cameraRef} initialViewState={{ center: footprintCenter, zoom: 11.5 }} />
 
         {/* Offline shaded-relief basemap, read straight from the bundled MBTiles. */}
@@ -389,9 +402,10 @@ export default function App() {
         {/* Engine scored cells, painted with the SAME "Magma" heat ramp as the
             desktop (frontend recommendColor): bright/pale = higher score, dark
             purple = low. Floors at score 15 (the engine min_score), opacity 0.6.
-            Mirrored here verbatim so both surfaces read identically. Tap a cell to
-            see its factor-by-factor rationale. */}
-        <GeoJSONSource id="scored" data={cellsFC} onPress={onScoredPress}>
+            Mirrored here verbatim so both surfaces read identically. Taps are
+            handled at the Map level (onMapPress) so markers on top can't swallow
+            them. */}
+        <GeoJSONSource id="scored" data={cellsFC}>
           <Layer
             id="scored-fill"
             type="fill"
