@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
+  Keyboard,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native'
@@ -24,8 +26,8 @@ import {
   waypointsFC,
   type LoadedTrip,
   type ScoredCell,
-  type Waypoint,
 } from './src/bundle'
+import { appendFind, findsFC, loadFinds, type Find } from './src/finds'
 
 // Colorado I-70 corridor — a sane pre-trip fallback if we somehow render the map
 // before a footprint is known (we normally gate on the trip loading first).
@@ -59,6 +61,20 @@ function humanize(name: string): string {
   return s ? s.charAt(0).toUpperCase() + s.slice(1) : s
 }
 
+// Compact local timestamp for a logged find, e.g. "Jun 14, 3:05pm". Built by hand
+// (not toLocaleString) so it doesn't depend on Hermes Intl being present.
+function fmtTime(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  const mo = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][d.getMonth()]
+  let h = d.getHours()
+  const ampm = h >= 12 ? 'pm' : 'am'
+  h = h % 12
+  if (h === 0) h = 12
+  const min = String(d.getMinutes()).padStart(2, '0')
+  return `${mo} ${d.getDate()}, ${h}:${min}${ampm}`
+}
+
 // Offline base style: no remote fetch (we're offline-first). The dark background
 // shows through anywhere the bundled hillshade has no tiles. The real basemap is
 // added as an mbtiles:// RasterSource child once the trip's tiles are on disk.
@@ -69,9 +85,14 @@ const OFFLINE_STYLE: StyleSpecification = {
 }
 
 type Fix = { lon: number; lat: number; accuracy: number | null }
-type Panel = 'trip' | 'layers' | null
+type Panel = 'trip' | 'layers' | 'logFind' | null
 // Which overlays are drawn — driven by the Layers panel toggles.
-type LayerVis = { basemap: boolean; scored: boolean; waypoints: boolean }
+type LayerVis = { basemap: boolean; scored: boolean; waypoints: boolean; finds: boolean }
+
+// Quick-pick kinds for logging a field find (stored as the kind string).
+const FIND_KINDS = ['Gold', 'Float', 'Outcrop', 'Other'] as const
+// Emerald find markers — deliberately distinct from the magenta planned waypoints.
+const FIND_COLOR = '#34d399'
 
 export default function App() {
   const [status, setStatus] = useState<'loading' | 'granted' | 'denied'>('loading')
@@ -81,7 +102,17 @@ export default function App() {
   // The loaded offline trip bundle (basemap + scored areas + waypoints).
   const [trip, setTrip] = useState<LoadedTrip | null>(null)
   const [tripError, setTripError] = useState<string | null>(null)
-  const [vis, setVis] = useState<LayerVis>({ basemap: true, scored: true, waypoints: true })
+  const [vis, setVis] = useState<LayerVis>({ basemap: true, scored: true, waypoints: true, finds: true })
+
+  // Field finds logged on this phone (append-only, persisted locally per trip),
+  // plus the in-progress log-a-find form state.
+  const [finds, setFinds] = useState<Find[]>([])
+  const [findKind, setFindKind] = useState<string>(FIND_KINDS[0])
+  const [findNote, setFindNote] = useState('')
+  const [savingFind, setSavingFind] = useState(false)
+  // Keyboard height, so the bottom find-form panel can lift above the keyboard
+  // (otherwise it covers the note field and the Save button).
+  const [kbHeight, setKbHeight] = useState(0)
 
   // Index (into manifest.scored_areas.cells) of the scored cell the user tapped,
   // or null. We key off the index rather than the tapped feature's properties
@@ -156,9 +187,36 @@ export default function App() {
     }
   }, [])
 
+  // Track keyboard height so the find-form panel can lift above it.
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardWillShow', (e) => setKbHeight(e.endCoordinates.height))
+    const hide = Keyboard.addListener('keyboardWillHide', () => setKbHeight(0))
+    return () => {
+      show.remove()
+      hide.remove()
+    }
+  }, [])
+
+  // Load this trip's previously-logged finds once the trip (and its id) is known.
+  useEffect(() => {
+    if (!trip) return
+    let active = true
+    loadFinds(trip.manifest.trip.id)
+      .then((loaded) => {
+        if (active) setFinds(loaded)
+      })
+      .catch(() => {
+        // No finds yet (or unreadable) — leave the list empty.
+      })
+    return () => {
+      active = false
+    }
+  }, [trip])
+
   // Derive the map overlays from the manifest once (not on every render).
   const cellsFC = useMemo(() => (trip ? scoredCellsFC(trip.manifest) : null), [trip])
   const wpsFC = useMemo(() => (trip ? waypointsFC(trip.manifest) : null), [trip])
+  const findsFCData = useMemo(() => findsFC(finds), [finds])
 
   // The full tapped cell (with its factors/gates), looked up by index in memory.
   const selectedCell = useMemo<ScoredCell | null>(() => {
@@ -205,18 +263,49 @@ export default function App() {
     }
   }
 
-  // Idle tracking is coarse to save battery, so when the user explicitly asks to
-  // center we spend one fresh high-accuracy fix to land precisely on them.
-  async function centerOnMe(): Promise<void> {
-    let target = fix
+  // One fresh high-accuracy fix on demand (idle tracking is coarse to save
+  // battery). Updates the live fix and returns it, or null if none is available.
+  async function getPreciseFix(): Promise<Fix | null> {
     try {
       const p = await Location.getCurrentPositionAsync({ accuracy: PRECISE_ACCURACY })
-      target = { lon: p.coords.longitude, lat: p.coords.latitude, accuracy: p.coords.accuracy }
-      setFix(target)
+      const f: Fix = { lon: p.coords.longitude, lat: p.coords.latitude, accuracy: p.coords.accuracy }
+      setFix(f)
+      return f
     } catch {
-      // No fresh fix right now — fall back to the last known position.
+      return null
     }
+  }
+
+  // When the user explicitly asks to center, spend one precise fix to land on them.
+  async function centerOnMe(): Promise<void> {
+    const target = (await getPreciseFix()) ?? fix
     if (target) easeToFix(target, 500)
+  }
+
+  // Log a find at the user's current position: grab a fresh precise fix so the
+  // pin is accurate despite coarse idle tracking, append it to this trip's local
+  // append-only log, and drop the form.
+  async function saveFind(): Promise<void> {
+    if (!trip || savingFind) return
+    setSavingFind(true)
+    try {
+      const at = (await getPreciseFix()) ?? fix
+      if (!at) return // no position — Save is disabled in this case, belt-and-suspenders
+      const find: Find = {
+        id: Date.now(),
+        lon: at.lon,
+        lat: at.lat,
+        kind: findKind,
+        note: findNote.trim(),
+        created_at: new Date().toISOString(),
+      }
+      setFinds(await appendFind(trip.manifest.trip.id, find))
+      setFindNote('')
+      setFindKind(FIND_KINDS[0])
+      setPanel(null)
+    } finally {
+      setSavingFind(false)
+    }
   }
 
   // A tap on the scored heat surface: pull the cell's index off the pressed
@@ -233,11 +322,13 @@ export default function App() {
     }
   }
 
-  function jumpToWaypoint(w: Waypoint): void {
+  // Fly the camera to a point and close the panel. Shared by the waypoint and
+  // find lists.
+  function flyTo(lon: number, lat: number): void {
     const cam = cameraRef.current
     if (!cam) return
     try {
-      cam.easeTo({ center: [w.lon, w.lat], zoom: FOLLOW_ZOOM, duration: 600 })
+      cam.easeTo({ center: [lon, lat], zoom: FOLLOW_ZOOM, duration: 600 })
       setPanel(null)
     } catch {
       // ignore if the map isn't ready
@@ -337,6 +428,23 @@ export default function App() {
           />
         </GeoJSONSource>
 
+        {/* Field finds logged on this phone — emerald, deliberately distinct from
+            the magenta planned waypoints, with a dark ring so they read on the
+            bright Magma cells too. */}
+        <GeoJSONSource id="finds" data={findsFCData}>
+          <Layer
+            id="find-circles"
+            type="circle"
+            layout={{ visibility: vis.finds ? 'visible' : 'none' }}
+            paint={{
+              'circle-radius': 7,
+              'circle-color': FIND_COLOR,
+              'circle-stroke-color': '#06281e',
+              'circle-stroke-width': 2,
+            }}
+          />
+        </GeoJSONSource>
+
         <UserLocation />
       </Map>
 
@@ -394,6 +502,20 @@ export default function App() {
         <Text style={styles.fabIcon}>🗺️</Text>
       </TouchableOpacity>
 
+      {/* Bottom-center: log a find at the current GPS position — the primary
+          field-capture action, so it gets the prominent emerald button. */}
+      <TouchableOpacity
+        style={[styles.fab, styles.fabPrimary, styles.bottomCenter, !fix && styles.fabDisabled]}
+        onPress={() => {
+          setSelectedIdx(null)
+          setPanel((p) => (p === 'logFind' ? null : 'logFind'))
+        }}
+        disabled={!fix}
+        accessibilityLabel="Log a find at my location"
+      >
+        <Text style={styles.fabPrimaryIcon}>＋</Text>
+      </TouchableOpacity>
+
       {/* Top-center status pill: app name + live GPS readout */}
       <View style={styles.pill} pointerEvents="none">
         <Text style={styles.pillTitle}>Prospector&apos;s Compass</Text>
@@ -408,11 +530,14 @@ export default function App() {
         )}
       </View>
 
-      {/* Slide-in panel for Trip / Layers, populated from the loaded bundle. */}
+      {/* Slide-in panel for Trip / Layers / Log-a-find, populated from the bundle.
+          In the find form, lift above the keyboard so the note + Save stay visible. */}
       {panel && (
-        <View style={styles.panel}>
+        <View style={[styles.panel, panel === 'logFind' && kbHeight > 0 && { bottom: kbHeight + 12 }]}>
           <View style={styles.panelHeader}>
-            <Text style={styles.panelTitle}>{panel === 'trip' ? manifest.trip.name : 'Map layers'}</Text>
+            <Text style={styles.panelTitle}>
+              {panel === 'trip' ? manifest.trip.name : panel === 'layers' ? 'Map layers' : 'Log a find'}
+            </Text>
             <TouchableOpacity onPress={() => setPanel(null)} accessibilityLabel="Close">
               <Text style={styles.panelClose}>✕</Text>
             </TouchableOpacity>
@@ -422,28 +547,81 @@ export default function App() {
             <View>
               <Text style={styles.panelMeta}>
                 Looking for {manifest.scored_areas.target} · {manifest.trip.waypoints.length} spot
-                {manifest.trip.waypoints.length === 1 ? '' : 's'} · {manifest.scored_areas.count} scored cells
+                {manifest.trip.waypoints.length === 1 ? '' : 's'} · {finds.length} find
+                {finds.length === 1 ? '' : 's'}
               </Text>
               <ScrollView style={styles.wpList}>
+                <Text style={styles.gateHeading}>Planned spots</Text>
                 {manifest.trip.waypoints.length === 0 && (
                   <Text style={styles.panelBody}>No saved spots in this trip yet.</Text>
                 )}
                 {manifest.trip.waypoints.map((w) => (
-                  <TouchableOpacity key={w.id} style={styles.wpRow} onPress={() => jumpToWaypoint(w)}>
+                  <TouchableOpacity key={w.id} style={styles.wpRow} onPress={() => flyTo(w.lon, w.lat)}>
                     <Text style={styles.wpTitle}>{w.title || w.kind || `Spot ${w.id}`}</Text>
                     {!!w.note && <Text style={styles.wpNote} numberOfLines={1}>{w.note}</Text>}
                   </TouchableOpacity>
                 ))}
+                <Text style={styles.gateHeading}>Your finds</Text>
+                {finds.length === 0 && (
+                  <Text style={styles.panelBody}>No finds yet. Tap ＋ to log one where you stand.</Text>
+                )}
+                {/* Newest first — the find you just logged is the one you want. */}
+                {[...finds].reverse().map((f) => (
+                  <TouchableOpacity key={f.id} style={styles.wpRow} onPress={() => flyTo(f.lon, f.lat)}>
+                    <Text style={styles.wpTitle}>{f.kind} · {fmtTime(f.created_at)}</Text>
+                    {!!f.note && <Text style={styles.wpNote} numberOfLines={1}>{f.note}</Text>}
+                  </TouchableOpacity>
+                ))}
               </ScrollView>
             </View>
-          ) : (
+          ) : panel === 'layers' ? (
             <View>
               <LayerToggle label="Terrain basemap" on={vis.basemap} disabled={!basemapMbtilesUrl} onPress={() => toggleVis('basemap')} />
               <LayerToggle label="Scored areas" on={vis.scored} onPress={() => toggleVis('scored')} />
               <LayerToggle label="Saved spots" on={vis.waypoints} onPress={() => toggleVis('waypoints')} />
+              <LayerToggle label="My finds" on={vis.finds} onPress={() => toggleVis('finds')} />
               {!basemapMbtilesUrl && (
                 <Text style={styles.panelMeta}>This bundle carried no basemap — only the scored areas and spots are shown.</Text>
               )}
+            </View>
+          ) : (
+            <View>
+              {fix ? (
+                <Text style={styles.panelMeta}>
+                  At {fix.lat.toFixed(5)}, {fix.lon.toFixed(5)}
+                  {fix.accuracy != null ? `  ±${Math.round(fix.accuracy)} m` : ''}
+                </Text>
+              ) : (
+                <Text style={styles.panelMeta}>Waiting for a GPS fix…</Text>
+              )}
+              <Text style={styles.formLabel}>Kind</Text>
+              <View style={styles.kindRow}>
+                {FIND_KINDS.map((k) => (
+                  <TouchableOpacity
+                    key={k}
+                    style={[styles.kindChip, findKind === k && styles.kindChipOn]}
+                    onPress={() => setFindKind(k)}
+                  >
+                    <Text style={[styles.kindChipText, findKind === k && styles.kindChipTextOn]}>{k}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <Text style={styles.formLabel}>Note</Text>
+              <TextInput
+                style={styles.noteInput}
+                value={findNote}
+                onChangeText={setFindNote}
+                placeholder="What did you see? (optional)"
+                placeholderTextColor="#64748b"
+                multiline
+              />
+              <TouchableOpacity
+                style={[styles.saveBtn, (!fix || savingFind) && styles.fabDisabled]}
+                onPress={saveFind}
+                disabled={!fix || savingFind}
+              >
+                <Text style={styles.saveBtnText}>{savingFind ? 'Saving…' : 'Save find here'}</Text>
+              </TouchableOpacity>
             </View>
           )}
         </View>
@@ -558,10 +736,13 @@ const styles = StyleSheet.create({
   },
   fabDisabled: { opacity: 0.5 },
   fabIcon: { fontSize: 22 },
+  fabPrimary: { backgroundColor: '#34d399' },
+  fabPrimaryIcon: { fontSize: 30, color: '#06281e', fontWeight: '700', lineHeight: 32 },
   topLeft: { top: 60, left: 16 },
   topRight: { top: 60, right: 16 },
   bottomRight: { bottom: 48, right: 16 },
   bottomLeft: { bottom: 48, left: 16 },
+  bottomCenter: { bottom: 48, alignSelf: 'center' },
 
   pill: {
     position: 'absolute',
@@ -621,4 +802,14 @@ const styles = StyleSheet.create({
   gateOpen: { color: '#34d399' },
   gateRestricted: { color: '#f87171' },
   landDisc: { color: '#94a3b8', fontSize: 11, fontStyle: 'italic', lineHeight: 15, marginTop: 10 },
+
+  formLabel: { color: '#cbd5e1', fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 14, marginBottom: 8 },
+  kindRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  kindChip: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: 999, backgroundColor: 'rgba(148,163,184,0.15)', borderWidth: 1, borderColor: 'rgba(148,163,184,0.3)' },
+  kindChipOn: { backgroundColor: 'rgba(52,211,153,0.2)', borderColor: '#34d399' },
+  kindChipText: { color: '#cbd5e1', fontSize: 14, fontWeight: '600' },
+  kindChipTextOn: { color: '#34d399' },
+  noteInput: { color: '#e2e8f0', fontSize: 15, backgroundColor: 'rgba(148,163,184,0.12)', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, minHeight: 64, textAlignVertical: 'top' },
+  saveBtn: { backgroundColor: '#34d399', borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginTop: 16 },
+  saveBtnText: { color: '#06281e', fontSize: 16, fontWeight: '700' },
 })
