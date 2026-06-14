@@ -7,7 +7,7 @@
 // trip bundle can never overwrite finds logged on an earlier trip. Everything is
 // local: no network, works with zero signal.
 
-import { File, Paths } from 'expo-file-system'
+import { Directory, File, Paths } from 'expo-file-system'
 
 export type Find = {
   id: number
@@ -16,6 +16,7 @@ export type Find = {
   kind: string
   note: string
   created_at: string // ISO 8601
+  photo?: string // relative filename in find-photos/<tripId>/, if a photo is attached
 }
 
 function findsFile(tripId: number): File {
@@ -71,6 +72,34 @@ export async function appendFind(tripId: number, find: Find): Promise<Find[]> {
   const run = writeQueue.then(() => doAppendFind(tripId, find))
   writeQueue = run.catch(() => undefined) // keep the chain alive past any error
   return run
+}
+
+// Per-trip photo directory: documents/find-photos/<tripId>/.
+function photosDir(tripId: number): Directory {
+  return new Directory(Paths.document, 'find-photos', String(tripId))
+}
+
+/** Copy a freshly captured photo (the picker's temp URI) into permanent per-trip
+ *  storage, named by the find id. Returns the RELATIVE filename to store on the
+ *  find, or null if the copy failed (the find still saves, just without a photo). */
+export async function savePhoto(tripId: number, findId: number, tempUri: string): Promise<string | null> {
+  try {
+    const dir = photosDir(tripId)
+    if (!dir.exists) dir.create({ intermediates: true, idempotent: true })
+    const filename = `${findId}.jpg`
+    const dest = new File(dir, filename)
+    if (dest.exists) dest.delete()
+    new File(tempUri).copy(dest)
+    return filename
+  } catch {
+    return null
+  }
+}
+
+/** Absolute URI for a stored find photo, rebuilt from the relative filename so it
+ *  survives app-container path changes (we never store the absolute path). */
+export function photoUri(tripId: number, filename: string): string {
+  return new File(photosDir(tripId), filename).uri
 }
 
 /** Finds → a Point FeatureCollection for the map markers. */

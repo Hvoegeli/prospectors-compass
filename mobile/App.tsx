@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
+  ActionSheetIOS,
   ActivityIndicator,
+  Alert,
+  Image,
   Keyboard,
+  Modal,
   ScrollView,
   StyleSheet,
   Text,
@@ -9,6 +13,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native'
+import * as ImagePicker from 'expo-image-picker'
 import {
   Camera,
   type CameraRef,
@@ -28,7 +33,7 @@ import {
   type LoadedTrip,
   type ScoredCell,
 } from './src/bundle'
-import { appendFind, findsFC, loadFinds, type Find } from './src/finds'
+import { appendFind, findsFC, loadFinds, photoUri, savePhoto, type Find } from './src/finds'
 
 // Colorado I-70 corridor — a sane pre-trip fallback if we somehow render the map
 // before a footprint is known (we normally gate on the trip loading first).
@@ -130,6 +135,10 @@ export default function App() {
   const [findKind, setFindKind] = useState<string>(FIND_KINDS[0])
   const [findNote, setFindNote] = useState('')
   const [savingFind, setSavingFind] = useState(false)
+  // Temp URI of a photo picked for the in-progress find (copied to permanent
+  // storage only on Save), and the URI currently shown in the full-screen viewer.
+  const [pendingPhotoUri, setPendingPhotoUri] = useState<string | null>(null)
+  const [viewerUri, setViewerUri] = useState<string | null>(null)
   // Keyboard height, so the bottom find-form panel can lift above the keyboard
   // (otherwise it covers the note field and the Save button).
   const [kbHeight, setKbHeight] = useState(0)
@@ -321,21 +330,70 @@ export default function App() {
     try {
       const at = (await getPreciseFix()) ?? fix
       if (!at) return // no position — Save is disabled in this case, belt-and-suspenders
+      const id = Date.now()
+      const tripId = trip.manifest.trip.id
+      // Copy the photo into permanent storage BEFORE writing the find, so a saved
+      // find never points at a missing image. A photo is optional: if the copy
+      // fails, save the find anyway and just tell the user.
+      let photo: string | undefined
+      if (pendingPhotoUri) {
+        const saved = await savePhoto(tripId, id, pendingPhotoUri)
+        if (saved) photo = saved
+        else Alert.alert('Photo not attached', 'The find was saved, but the photo could not be stored.')
+      }
       const find: Find = {
-        id: Date.now(),
+        id,
         lon: at.lon,
         lat: at.lat,
         kind: findKind,
         note: findNote.trim(),
         created_at: new Date().toISOString(),
+        ...(photo ? { photo } : {}),
       }
-      setFinds(await appendFind(trip.manifest.trip.id, find))
+      setFinds(await appendFind(tripId, find))
       setFindNote('')
       setFindKind(FIND_KINDS[0])
+      setPendingPhotoUri(null)
       setPanel(null)
     } finally {
       setSavingFind(false)
     }
+  }
+
+  // Launch the camera or library, then hold the chosen photo's temp URI for the
+  // form preview (it's copied into permanent storage only on Save).
+  async function pickPhoto(source: 'camera' | 'library'): Promise<void> {
+    try {
+      const perm =
+        source === 'camera'
+          ? await ImagePicker.requestCameraPermissionsAsync()
+          : await ImagePicker.requestMediaLibraryPermissionsAsync()
+      if (!perm.granted) {
+        Alert.alert(
+          source === 'camera' ? 'Camera access is off' : 'Photo access is off',
+          'Enable it in Settings to attach photos. You can still log the find without one.',
+        )
+        return
+      }
+      const opts: ImagePicker.ImagePickerOptions = { quality: 0.6, mediaTypes: ['images'] }
+      const result =
+        source === 'camera' ? await ImagePicker.launchCameraAsync(opts) : await ImagePicker.launchImageLibraryAsync(opts)
+      const uri = result.canceled ? null : (result.assets?.[0]?.uri ?? null)
+      if (uri) setPendingPhotoUri(uri)
+    } catch {
+      Alert.alert('Couldn’t open the camera', 'Try again, or log the find without a photo.')
+    }
+  }
+
+  // Offer camera vs library before picking.
+  function addPhoto(): void {
+    ActionSheetIOS.showActionSheetWithOptions(
+      { options: ['Take photo', 'Choose from library', 'Cancel'], cancelButtonIndex: 2 },
+      (i) => {
+        if (i === 0) pickPhoto('camera')
+        else if (i === 1) pickPhoto('library')
+      },
+    )
   }
 
   // Tap anywhere on the map: query the scored-fill layer directly at that pixel.
@@ -385,6 +443,7 @@ export default function App() {
   // exclusion, instead of repeating it at every bar button.
   function openPanel(p: Exclude<Panel, null>): void {
     setSelectedIdx(null)
+    setPendingPhotoUri(null) // discard any unsaved photo when entering/leaving the form
     setPanel((cur) => (cur === p ? null : p))
   }
 
@@ -541,7 +600,13 @@ export default function App() {
             <Text style={styles.panelTitle}>
               {panel === 'trip' ? manifest.trip.name : panel === 'layers' ? 'Map layers' : 'Log a find'}
             </Text>
-            <TouchableOpacity onPress={() => setPanel(null)} accessibilityLabel="Close">
+            <TouchableOpacity
+              onPress={() => {
+                setPendingPhotoUri(null)
+                setPanel(null)
+              }}
+              accessibilityLabel="Close"
+            >
               <Text style={styles.panelClose}>✕</Text>
             </TouchableOpacity>
           </View>
@@ -569,12 +634,18 @@ export default function App() {
                   <Text style={styles.panelBody}>No finds yet. Tap ＋ to log one where you stand.</Text>
                 )}
                 {/* Newest first — the find you just logged is the one you want. */}
-                {[...finds].reverse().map((f) => (
-                  <TouchableOpacity key={f.id} style={styles.wpRow} onPress={() => flyTo(f.lon, f.lat)}>
-                    <Text style={styles.wpTitle}>{f.kind} · {fmtTime(f.created_at)}</Text>
-                    {!!f.note && <Text style={styles.wpNote} numberOfLines={1}>{f.note}</Text>}
-                  </TouchableOpacity>
-                ))}
+                {[...finds].reverse().map((f) => {
+                  const thumb = f.photo ? photoUri(manifest.trip.id, f.photo) : null
+                  return (
+                    <TouchableOpacity key={f.id} style={styles.findRow} onPress={() => flyTo(f.lon, f.lat)}>
+                      {thumb ? <PhotoThumb uri={thumb} onPress={() => setViewerUri(thumb)} /> : null}
+                      <View style={styles.findRowText}>
+                        <Text style={styles.wpTitle}>{f.kind} · {fmtTime(f.created_at)}</Text>
+                        {f.note ? <Text style={styles.wpNote} numberOfLines={1}>{f.note}</Text> : null}
+                      </View>
+                    </TouchableOpacity>
+                  )
+                })}
               </ScrollView>
             </View>
           ) : panel === 'layers' ? (
@@ -618,6 +689,24 @@ export default function App() {
                 placeholderTextColor="#64748b"
                 multiline
               />
+              <Text style={styles.formLabel}>Photo</Text>
+              {pendingPhotoUri ? (
+                <View style={styles.photoRow}>
+                  <Image source={{ uri: pendingPhotoUri }} style={styles.photoPreview} />
+                  <View style={styles.photoActions}>
+                    <TouchableOpacity onPress={addPhoto}>
+                      <Text style={styles.photoActionText}>Retake</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => setPendingPhotoUri(null)}>
+                      <Text style={[styles.photoActionText, styles.photoRemoveText]}>Remove</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : (
+                <TouchableOpacity style={styles.addPhotoBtn} onPress={addPhoto}>
+                  <Text style={styles.addPhotoText}>📷  Add photo</Text>
+                </TouchableOpacity>
+              )}
               <TouchableOpacity
                 style={[styles.saveBtn, (!fix || savingFind) && styles.fabDisabled]}
                 onPress={saveFind}
@@ -687,6 +776,13 @@ export default function App() {
           </ScrollView>
         </View>
       )}
+
+      {/* Full-screen photo viewer — tap anywhere to dismiss. */}
+      <Modal visible={!!viewerUri} transparent animationType="fade" onRequestClose={() => setViewerUri(null)}>
+        <TouchableOpacity style={styles.viewerBackdrop} activeOpacity={1} onPress={() => setViewerUri(null)}>
+          {viewerUri ? <Image source={{ uri: viewerUri }} style={styles.viewerImage} resizeMode="contain" /> : null}
+        </TouchableOpacity>
+      </Modal>
     </View>
   )
 }
@@ -745,6 +841,24 @@ function BarButton({
         <Text style={primary ? styles.barIconPrimary : styles.barIcon}>{icon}</Text>
       </View>
       <Text style={[styles.barLabel, active && styles.barLabelActive, disabled && styles.barDisabled]}>{label}</Text>
+    </TouchableOpacity>
+  )
+}
+
+// A find's photo thumbnail. Falls back to a placeholder if the file is missing or
+// unreadable (e.g. an interrupted copy) instead of showing a broken image.
+function PhotoThumb({ uri, onPress }: { uri: string; onPress: () => void }) {
+  const [failed, setFailed] = useState(false)
+  if (failed) {
+    return (
+      <View style={[styles.findThumb, styles.thumbPlaceholder]}>
+        <Text style={styles.thumbPlaceholderIcon}>📷</Text>
+      </View>
+    )
+  }
+  return (
+    <TouchableOpacity onPress={onPress}>
+      <Image source={{ uri }} style={styles.findThumb} onError={() => setFailed(true)} />
     </TouchableOpacity>
   )
 }
@@ -853,4 +967,38 @@ const styles = StyleSheet.create({
   noteInput: { color: '#e2e8f0', fontSize: 15, backgroundColor: 'rgba(148,163,184,0.12)', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, minHeight: 64, textAlignVertical: 'top' },
   saveBtn: { backgroundColor: '#34d399', borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginTop: 16 },
   saveBtnText: { color: '#06281e', fontSize: 16, fontWeight: '700' },
+
+  // Log-find photo control
+  addPhotoBtn: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(148,163,184,0.45)',
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+    backgroundColor: 'rgba(148,163,184,0.10)',
+  },
+  addPhotoText: { color: '#cbd5e1', fontSize: 15, fontWeight: '600' },
+  photoRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  photoPreview: { width: 64, height: 64, borderRadius: 8, backgroundColor: 'rgba(148,163,184,0.15)' },
+  photoActions: { gap: 10 },
+  photoActionText: { color: '#cbd5e1', fontSize: 15, fontWeight: '600' },
+  photoRemoveText: { color: '#f87171' },
+
+  // Find-list rows with optional thumbnail
+  findRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(148,163,184,0.25)',
+  },
+  findRowText: { flex: 1 },
+  findThumb: { width: 44, height: 44, borderRadius: 6, backgroundColor: 'rgba(148,163,184,0.15)' },
+  thumbPlaceholder: { alignItems: 'center', justifyContent: 'center' },
+  thumbPlaceholderIcon: { fontSize: 20, opacity: 0.6 },
+
+  // Full-screen photo viewer
+  viewerBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.92)', alignItems: 'center', justifyContent: 'center' },
+  viewerImage: { width: '100%', height: '100%' },
 })
