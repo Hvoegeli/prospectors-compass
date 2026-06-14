@@ -362,7 +362,11 @@ export default function App() {
 
   return (
     <View style={styles.root}>
-      <Map style={styles.map} mapStyle={OFFLINE_STYLE}>
+      {/* logo/attribution off: our four corner FABs leave no room for MapLibre's
+          default ornaments (they sat UNDER the buttons), and the basemap is
+          self-hosted public-domain USGS data, so no third-party attribution is
+          owed. Data provenance lives in docs/DATA_SOURCES.md. */}
+      <Map style={styles.map} mapStyle={OFFLINE_STYLE} logo={false} attribution={false}>
         <Camera ref={cameraRef} initialViewState={{ center: footprintCenter, zoom: 11.5 }} />
 
         {/* Offline shaded-relief basemap, read straight from the bundled MBTiles. */}
