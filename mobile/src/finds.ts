@@ -22,28 +22,55 @@ function findsFile(tripId: number): File {
   return new File(Paths.document, `finds-${tripId}.json`)
 }
 
-/** All finds logged for this trip, oldest first. Empty if none yet (or unreadable). */
-export async function loadFinds(tripId: number): Promise<Find[]> {
-  const f = findsFile(tripId)
-  if (!f.exists) return []
+// A backup written BEFORE the main file on every save, holding the same new
+// state. If a save is interrupted and leaves the main file truncated/corrupt,
+// loadFinds recovers the full list from here — so a crash can never wipe the
+// history (the worst case is losing the single find that was mid-write).
+function findsBackup(tripId: number): File {
+  return new File(Paths.document, `finds-${tripId}.bak.json`)
+}
+
+function parseFinds(f: File): Find[] | null {
+  if (!f.exists) return null
   try {
     const parsed = JSON.parse(f.textSync()) as unknown
-    return Array.isArray(parsed) ? (parsed as Find[]) : []
+    return Array.isArray(parsed) ? (parsed as Find[]) : null
   } catch {
-    // Corrupt file — start fresh rather than crash the field app. (We never
-    // delete finds in normal use, so this should only happen after manual
-    // tampering or a truncated write.)
-    return []
+    return null // corrupt/truncated — signal "unreadable" so we try the backup
   }
 }
 
-/** Append one find (append-only) and return the updated list. */
-export async function appendFind(tripId: number, find: Find): Promise<Find[]> {
+/** All finds logged for this trip, oldest first. Empty if none yet. Falls back
+ *  to the backup if the main file is missing or corrupt (interrupted write). */
+export async function loadFinds(tripId: number): Promise<Find[]> {
+  return parseFinds(findsFile(tripId)) ?? parseFinds(findsBackup(tripId)) ?? []
+}
+
+// Serialize all writes for one device so two rapid saves (or a save racing the
+// trip-load) can't read the same base list and clobber each other — the second
+// save waits for the first to finish, then reads the list WITH the first find.
+let writeQueue: Promise<unknown> = Promise.resolve()
+
+async function doAppendFind(tripId: number, find: Find): Promise<Find[]> {
   const updated = [...(await loadFinds(tripId)), find]
-  const f = findsFile(tripId)
-  f.create({ overwrite: true })
-  f.write(JSON.stringify(updated))
+  const json = JSON.stringify(updated)
+  // Backup first (complete new state), then the main file. Crash mid-main-write
+  // → loadFinds recovers from the backup; crash mid-backup-write → the main file
+  // still holds the previous complete state. Either way the history survives.
+  const bak = findsBackup(tripId)
+  bak.create({ overwrite: true })
+  bak.write(json)
+  const main = findsFile(tripId)
+  main.create({ overwrite: true })
+  main.write(json)
   return updated
+}
+
+/** Append one find (append-only, crash-safe, serialized) and return the list. */
+export async function appendFind(tripId: number, find: Find): Promise<Find[]> {
+  const run = writeQueue.then(() => doAppendFind(tripId, find))
+  writeQueue = run.catch(() => undefined) // keep the chain alive past any error
+  return run
 }
 
 /** Finds → a Point FeatureCollection for the map markers. */
