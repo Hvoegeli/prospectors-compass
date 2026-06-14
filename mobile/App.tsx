@@ -250,23 +250,28 @@ export default function App() {
     return [(minLon + maxLon) / 2, (minLat + maxLat) / 2]
   }, [trip])
 
-  // Frame the trip footprint when both the trip and the camera are ready. The
-  // camera throws if the map view isn't initialized yet, so swallow and retry on
-  // the next tick — the flag is burned only on a successful fit.
+  // Frame the whole trip footprint. Returns false if the camera/trip isn't ready
+  // yet (the camera throws before the map view initializes). Shared by the
+  // auto-frame effect below and the Overview bar button.
+  function fitFootprint(): boolean {
+    const cam = cameraRef.current
+    if (!cam || !trip) return false
+    try {
+      cam.fitBounds(trip.manifest.footprint.bbox)
+      didFit.current = true
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  // Frame the footprint once when the trip and camera are ready, retrying on the
+  // next tick until it lands (the flag is burned only on a successful fit).
   useEffect(() => {
     if (!trip || didFit.current) return
     let tries = 0
     const attempt = () => {
-      const cam = cameraRef.current
-      if (cam) {
-        try {
-          cam.fitBounds(trip.manifest.footprint.bbox)
-          didFit.current = true
-          return
-        } catch {
-          // map not ready yet — fall through to retry
-        }
-      }
+      if (fitFootprint()) return
       if (tries++ < 10) timer = setTimeout(attempt, 200)
     }
     let timer = setTimeout(attempt, 200)
@@ -373,6 +378,14 @@ export default function App() {
 
   function toggleVis(key: keyof LayerVis): void {
     setVis((v) => ({ ...v, [key]: !v[key] }))
+  }
+
+  // Open (or toggle off) a panel. Always clears any open rationale card first so
+  // the card and a panel never stack — the single place that enforces that
+  // exclusion, instead of repeating it at every bar button.
+  function openPanel(p: Exclude<Panel, null>): void {
+    setSelectedIdx(null)
+    setPanel((cur) => (cur === p ? null : p))
   }
 
   // --- Loading / error gates: don't mount the map until we have a footprint ---
@@ -492,52 +505,18 @@ export default function App() {
       {/* Bottom control bar — every action in one row. The emerald Log-find
           (primary field-capture action) sits dead center, per the layout. */}
       <View style={styles.bottomBar}>
-        <BarButton
-          icon="📋"
-          label="Trip"
-          active={panel === 'trip'}
-          onPress={() => {
-            setSelectedIdx(null)
-            setPanel((p) => (p === 'trip' ? null : 'trip'))
-          }}
-        />
-        <BarButton
-          icon="🗂️"
-          label="Layers"
-          active={panel === 'layers'}
-          onPress={() => {
-            setSelectedIdx(null)
-            setPanel((p) => (p === 'layers' ? null : 'layers'))
-          }}
-        />
+        <BarButton icon="📋" label="Trip" active={panel === 'trip'} onPress={() => openPanel('trip')} />
+        <BarButton icon="🗂️" label="Layers" active={panel === 'layers'} onPress={() => openPanel('layers')} />
         <BarButton
           icon="＋"
           label="Log find"
           primary
           active={panel === 'logFind'}
           disabled={!fix}
-          onPress={() => {
-            setSelectedIdx(null)
-            setPanel((p) => (p === 'logFind' ? null : 'logFind'))
-          }}
+          onPress={() => openPanel('logFind')}
         />
         <BarButton icon="📍" label="Center" disabled={!fix} onPress={centerOnMe} />
-        <BarButton
-          icon="🗺️"
-          label="Overview"
-          onPress={() => {
-            didFit.current = false
-            const cam = cameraRef.current
-            if (cam) {
-              try {
-                cam.fitBounds(manifest.footprint.bbox)
-                didFit.current = true
-              } catch {
-                // ignore if not ready
-              }
-            }
-          }}
-        />
+        <BarButton icon="🗺️" label="Overview" onPress={fitFootprint} />
       </View>
 
       {/* Top-center status pill: app name + live GPS readout */}
