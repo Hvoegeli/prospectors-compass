@@ -33,7 +33,7 @@ import {
   type LoadedTrip,
   type ScoredCell,
 } from './src/bundle'
-import { appendFind, findsFC, loadFinds, photoUri, savePhoto, type Find } from './src/finds'
+import { appendFind, deleteFind, findsFC, loadFinds, photoUri, savePhoto, type Find } from './src/finds'
 
 // Colorado I-70 corridor — a sane pre-trip fallback if we somehow render the map
 // before a footprint is known (we normally gate on the trip loading first).
@@ -360,6 +360,31 @@ export default function App() {
     }
   }
 
+  // Delete a logged find. Finds are otherwise append-only, so a mis-tapped or
+  // accidental find would be permanent; this is the one escape hatch. Always
+  // behind a confirm (destructive + irreversible), and it also drops the photo.
+  function confirmDeleteFind(f: Find): void {
+    if (!trip) return
+    const tripId = trip.manifest.trip.id
+    Alert.alert(
+      'Delete find?',
+      `Removes "${f.kind}"${f.note ? ` (${f.note})` : ''}${f.photo ? ' and its photo' : ''}. This can't be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            const gone = f.photo ? photoUri(tripId, f.photo) : null
+            setFinds(await deleteFind(tripId, f.id))
+            // Close the full-screen viewer if it was showing this find's photo.
+            if (gone) setViewerUri((cur) => (cur === gone ? null : cur))
+          },
+        },
+      ],
+    )
+  }
+
   // Launch the camera or library, then hold the chosen photo's temp URI for the
   // form preview (it's copied into permanent storage only on Save).
   async function pickPhoto(source: 'camera' | 'library'): Promise<void> {
@@ -637,13 +662,21 @@ export default function App() {
                 {[...finds].reverse().map((f) => {
                   const thumb = f.photo ? photoUri(manifest.trip.id, f.photo) : null
                   return (
-                    <TouchableOpacity key={f.id} style={styles.findRow} onPress={() => flyTo(f.lon, f.lat)}>
+                    <View key={f.id} style={styles.findRow}>
                       {thumb ? <PhotoThumb uri={thumb} onPress={() => setViewerUri(thumb)} /> : null}
-                      <View style={styles.findRowText}>
+                      <TouchableOpacity style={styles.findRowText} onPress={() => flyTo(f.lon, f.lat)}>
                         <Text style={styles.wpTitle}>{f.kind} · {fmtTime(f.created_at)}</Text>
                         {f.note ? <Text style={styles.wpNote} numberOfLines={1}>{f.note}</Text> : null}
-                      </View>
-                    </TouchableOpacity>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.findDelete}
+                        onPress={() => confirmDeleteFind(f)}
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                        accessibilityLabel={`Delete ${f.kind} find`}
+                      >
+                        <Text style={styles.findDeleteText}>✕</Text>
+                      </TouchableOpacity>
+                    </View>
                   )
                 })}
               </ScrollView>
@@ -994,6 +1027,8 @@ const styles = StyleSheet.create({
     borderTopColor: 'rgba(148,163,184,0.25)',
   },
   findRowText: { flex: 1 },
+  findDelete: { paddingHorizontal: 8, paddingVertical: 4 },
+  findDeleteText: { color: '#f87171', fontSize: 17, fontWeight: '600' },
   findThumb: { width: 44, height: 44, borderRadius: 6, backgroundColor: 'rgba(148,163,184,0.15)' },
   thumbPlaceholder: { alignItems: 'center', justifyContent: 'center' },
   thumbPlaceholderIcon: { fontSize: 20, opacity: 0.6 },

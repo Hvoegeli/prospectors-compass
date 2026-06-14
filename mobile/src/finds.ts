@@ -74,6 +74,41 @@ export async function appendFind(tripId: number, find: Find): Promise<Find[]> {
   return run
 }
 
+async function doDeleteFind(tripId: number, findId: number): Promise<Find[]> {
+  const current = await loadFinds(tripId)
+  const removed = current.find((f) => f.id === findId)
+  const updated = current.filter((f) => f.id !== findId)
+  const json = JSON.stringify(updated)
+  // Same backup-first, main-second order as doAppendFind: a crash mid-write still
+  // recovers a complete list from one file or the other.
+  const bak = findsBackup(tripId)
+  bak.create({ overwrite: true })
+  bak.write(json)
+  const main = findsFile(tripId)
+  main.create({ overwrite: true })
+  main.write(json)
+  // Drop the orphaned photo AFTER the list is safely rewritten. A crash in between
+  // leaves a photo with no find (harmless, reclaimable) rather than a find pointing
+  // at a deleted file. Best-effort: a failed delete just leaves an orphan.
+  if (removed?.photo) {
+    try {
+      const photo = new File(photosDir(tripId), removed.photo)
+      if (photo.exists) photo.delete()
+    } catch {
+      // orphaned photo is harmless; ignore
+    }
+  }
+  return updated
+}
+
+/** Delete one find by id (crash-safe, serialized) and return the remaining list.
+ *  Also removes the find's photo file if it had one. */
+export async function deleteFind(tripId: number, findId: number): Promise<Find[]> {
+  const run = writeQueue.then(() => doDeleteFind(tripId, findId))
+  writeQueue = run.catch(() => undefined) // keep the chain alive past any error
+  return run
+}
+
 // Per-trip photo directory: documents/find-photos/<tripId>/.
 function photosDir(tripId: number): Directory {
   return new Directory(Paths.document, 'find-photos', String(tripId))
