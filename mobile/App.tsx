@@ -32,8 +32,10 @@ import {
   waypointsFC,
   type LoadedTrip,
   type ScoredCell,
+  type Waypoint,
 } from './src/bundle'
 import { appendFind, deleteFind, findsFC, loadFinds, photoUri, savePhoto, type Find } from './src/finds'
+import { bearingDegrees, cardinal16, distanceMeters, formatDistanceImperial } from './src/geo'
 
 // Colorado I-70 corridor — a sane pre-trip fallback if we somehow render the map
 // before a footprint is known (we normally gate on the trip loading first).
@@ -139,6 +141,10 @@ export default function App() {
   // storage only on Save), and the URI currently shown in the full-screen viewer.
   const [pendingPhotoUri, setPendingPhotoUri] = useState<string | null>(null)
   const [viewerUri, setViewerUri] = useState<string | null>(null)
+  // The waypoint the user is navigating to (by id), or null. The bearing/distance
+  // readout is derived live from this + the current GPS fix, so it updates as you
+  // move without any extra subscription.
+  const [navTargetId, setNavTargetId] = useState<number | null>(null)
   // Keyboard height, so the bottom find-form panel can lift above the keyboard
   // (otherwise it covers the note field and the Save button).
   const [kbHeight, setKbHeight] = useState(0)
@@ -459,6 +465,16 @@ export default function App() {
     }
   }
 
+  // Start navigating to a waypoint: set it as the target and close the panel so
+  // the on-map bearing/distance readout is visible. clearNav stops navigating.
+  function navigateTo(w: Waypoint): void {
+    setNavTargetId(w.id)
+    setPanel(null)
+  }
+  function clearNav(): void {
+    setNavTargetId(null)
+  }
+
   function toggleVis(key: keyof LayerVis): void {
     setVis((v) => ({ ...v, [key]: !v[key] }))
   }
@@ -492,6 +508,21 @@ export default function App() {
 
   const { manifest, basemapMbtilesUrl } = trip
   const bm = manifest.basemap
+
+  // Live navigation readout, derived (not stored) so it recomputes every render —
+  // i.e. every time a fresh GPS fix lands. navTarget is the chosen waypoint (null
+  // if none or it no longer exists); nav is the bearing/distance, null until we
+  // have a fix to measure from. The trig is cheap, so no memoization is needed.
+  const navTarget =
+    navTargetId != null ? manifest.trip.waypoints.find((w) => w.id === navTargetId) ?? null : null
+  const nav =
+    navTarget && fix
+      ? {
+          // % 360 folds a rounded-up 359.5+ back to 0 (bearings read 0–359, not 360)
+          bearing: Math.round(bearingDegrees(fix.lat, fix.lon, navTarget.lat, navTarget.lon)) % 360,
+          distance: formatDistanceImperial(distanceMeters(fix.lat, fix.lon, navTarget.lat, navTarget.lon)),
+        }
+      : null
 
   return (
     <View style={styles.root}>
@@ -617,6 +648,32 @@ export default function App() {
         )}
       </View>
 
+      {/* Navigation HUD: bearing + distance to the chosen waypoint, live off the
+          GPS fix. Shown only while a target is set; ✕ stops navigating. */}
+      {navTarget && (
+        <View style={styles.navHud}>
+          <View style={styles.navHudText}>
+            <Text style={styles.navHudTitle} numberOfLines={1}>
+              ↗ {navTarget.title || navTarget.kind || `Spot ${navTarget.id}`}
+            </Text>
+            {nav ? (
+              <Text style={styles.navHudReadout}>
+                {nav.bearing}° {cardinal16(nav.bearing)} · {nav.distance}
+              </Text>
+            ) : (
+              <Text style={styles.navHudReadout}>Acquiring GPS…</Text>
+            )}
+          </View>
+          <TouchableOpacity
+            onPress={clearNav}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            accessibilityLabel="Stop navigating"
+          >
+            <Text style={styles.navHudClose}>✕</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* Slide-in panel for Trip / Layers / Log-a-find, populated from the bundle.
           In the find form, lift above the keyboard so the note + Save stay visible. */}
       {panel && (
@@ -648,12 +705,27 @@ export default function App() {
                 {manifest.trip.waypoints.length === 0 && (
                   <Text style={styles.panelBody}>No saved spots in this trip yet.</Text>
                 )}
-                {manifest.trip.waypoints.map((w) => (
-                  <TouchableOpacity key={w.id} style={styles.wpRow} onPress={() => flyTo(w.lon, w.lat)}>
-                    <Text style={styles.wpTitle}>{w.title || w.kind || `Spot ${w.id}`}</Text>
-                    {!!w.note && <Text style={styles.wpNote} numberOfLines={1}>{w.note}</Text>}
-                  </TouchableOpacity>
-                ))}
+                {manifest.trip.waypoints.map((w) => {
+                  const label = w.title || w.kind || `Spot ${w.id}`
+                  const active = navTargetId === w.id
+                  return (
+                    <View key={w.id} style={styles.wpRow}>
+                      <TouchableOpacity style={styles.wpRowText} onPress={() => flyTo(w.lon, w.lat)}>
+                        <Text style={styles.wpTitle}>{label}</Text>
+                        {!!w.note && <Text style={styles.wpNote} numberOfLines={1}>{w.note}</Text>}
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.wpGo, active && styles.wpGoActive]}
+                        onPress={() => navigateTo(w)}
+                        accessibilityLabel={`Navigate to ${label}`}
+                      >
+                        <Text style={[styles.wpGoText, active && styles.wpGoTextActive]}>
+                          {active ? 'Navigating' : '↗ Go'}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  )
+                })}
                 <Text style={styles.gateHeading}>Your finds</Text>
                 {finds.length === 0 && (
                   <Text style={styles.panelBody}>No finds yet. Tap ＋ to log one where you stand.</Text>
@@ -945,6 +1017,28 @@ const styles = StyleSheet.create({
   pillTitle: { color: '#ffffff', fontWeight: '700', fontSize: 13, textAlign: 'center' },
   pillText: { color: '#cbd5e1', fontSize: 12, textAlign: 'center', marginTop: 2 },
 
+  // Navigation HUD (bearing + distance to a waypoint), stacked under the pill
+  navHud: {
+    position: 'absolute',
+    top: 120,
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    maxWidth: 300,
+    backgroundColor: 'rgba(6,40,30,0.95)',
+    borderWidth: 1,
+    borderColor: '#34d399',
+    borderRadius: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+  },
+  navHudText: { flexShrink: 1 },
+  navHudTitle: { color: '#ffffff', fontWeight: '700', fontSize: 14 },
+  // tabular-nums keeps the digits from jittering as the readout updates
+  navHudReadout: { color: '#6ee7b7', fontSize: 16, fontWeight: '700', marginTop: 2, fontVariant: ['tabular-nums'] },
+  navHudClose: { color: '#cbd5e1', fontSize: 18, fontWeight: '600' },
+
   panel: {
     position: 'absolute',
     left: 16,
@@ -962,9 +1056,27 @@ const styles = StyleSheet.create({
   panelMeta: { color: '#94a3b8', fontSize: 12, marginBottom: 10, lineHeight: 17 },
 
   wpList: { maxHeight: 250 },
-  wpRow: { paddingVertical: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(148,163,184,0.25)' },
+  wpRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(148,163,184,0.25)',
+  },
+  wpRowText: { flex: 1 },
   wpTitle: { color: '#e2e8f0', fontSize: 15, fontWeight: '600' },
   wpNote: { color: '#94a3b8', fontSize: 12, marginTop: 2 },
+  wpGo: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#34d399',
+  },
+  wpGoActive: { backgroundColor: '#34d399', borderColor: '#34d399' },
+  wpGoText: { color: '#34d399', fontSize: 13, fontWeight: '700' },
+  wpGoTextActive: { color: '#06281e' },
 
   toggleRow: {
     flexDirection: 'row',
