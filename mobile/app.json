@@ -10,7 +10,24 @@
       "supportsTablet": false,
       "bundleIdentifier": "com.hvoegeli.compassfield",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "CFBundleDocumentTypes": [
+          {
+            "CFBundleTypeName": "Prospector's Compass Trip",
+            "LSHandlerRank": "Owner",
+            "LSItemContentTypes": ["com.hvoegeli.compassfield.pcbundle"]
+          }
+        ],
+        "UTExportedTypeDeclarations": [
+          {
+            "UTTypeIdentifier": "com.hvoegeli.compassfield.pcbundle",
+            "UTTypeDescription": "Prospector's Compass Trip",
+            "UTTypeConformsTo": ["public.data"],
+            "UTTypeTagSpecification": {
+              "public.filename-extension": ["pcbundle"]
+            }
+          }
+        ]
       }
     },
     "android": {

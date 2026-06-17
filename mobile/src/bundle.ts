@@ -106,12 +106,43 @@ function mbtilesUrlFor(file: File): string {
   return `mbtiles://${file.uri.replace(/^file:\/\//, '')}`
 }
 
+// Unpack a .pcbundle's bytes into Documents/trip (OVERWRITING any existing trip)
+// and return the loaded trip. Shared by the dev fixture path and AirDrop import,
+// so both produce identical on-disk state.
+function unpackZipBytes(zipBytes: Uint8Array): LoadedTrip {
+  const tripDir = new Directory(Paths.document, TRIP_DIR)
+  if (!tripDir.exists) tripDir.create({ idempotent: true })
+  const entries = unzipSync(zipBytes)
+
+  const manifestBytes = entries[MANIFEST_NAME]
+  if (!manifestBytes) throw new Error('bundle is missing trip.json')
+  const manifestText = strFromU8(manifestBytes)
+  const manifest = JSON.parse(manifestText) as TripManifest
+  const manifestFile = new File(tripDir, MANIFEST_NAME)
+  manifestFile.create({ overwrite: true })
+  manifestFile.write(manifestText)
+
+  let basemapMbtilesUrl: string | null = null
+  const basemapFile = new File(tripDir, BASEMAP_NAME)
+  const basemapBytes = entries[BASEMAP_NAME]
+  if (basemapBytes) {
+    basemapFile.create({ overwrite: true })
+    basemapFile.write(basemapBytes)
+    basemapMbtilesUrl = mbtilesUrlFor(basemapFile)
+  } else if (basemapFile.exists) {
+    // New trip carries no basemap — drop the previous trip's so it can't bleed through.
+    basemapFile.delete()
+  }
+
+  return { manifest, basemapMbtilesUrl }
+}
+
 export async function loadTripBundle(): Promise<LoadedTrip> {
   const tripDir = new Directory(Paths.document, TRIP_DIR)
   const manifestFile = new File(tripDir, MANIFEST_NAME)
   const basemapFile = new File(tripDir, BASEMAP_NAME)
 
-  // Already unpacked on a previous launch — just read the manifest back.
+  // Already unpacked on a previous launch (or imported) — just read it back.
   if (manifestFile.exists) {
     const manifest = JSON.parse(manifestFile.textSync()) as TripManifest
     return {
@@ -120,30 +151,27 @@ export async function loadTripBundle(): Promise<LoadedTrip> {
     }
   }
 
-  // First run: unpack the bundle into the documents directory.
-  if (!tripDir.exists) tripDir.create({ idempotent: true })
-
+  // First run: unpack the dev fixture shipped as an app asset.
   const asset = Asset.fromModule(FIXTURE)
   await asset.downloadAsync() // makes asset.localUri a readable file:// path
   const zipBytes = new File(asset.localUri ?? asset.uri).bytesSync()
-  const entries = unzipSync(zipBytes)
+  return unpackZipBytes(zipBytes)
+}
 
-  const manifestBytes = entries[MANIFEST_NAME]
-  if (!manifestBytes) throw new Error('bundle is missing trip.json')
-  const manifestText = strFromU8(manifestBytes)
-  const manifest = JSON.parse(manifestText) as TripManifest
-  manifestFile.create({ overwrite: true })
-  manifestFile.write(manifestText)
-
-  let basemapMbtilesUrl: string | null = null
-  const basemapBytes = entries[BASEMAP_NAME]
-  if (basemapBytes) {
-    basemapFile.create({ overwrite: true })
-    basemapFile.write(basemapBytes)
-    basemapMbtilesUrl = mbtilesUrlFor(basemapFile)
+/** Import a .pcbundle the user opened/AirDropped into the app: read the file at
+ *  `uri`, unpack it in place of the current trip, and return the loaded trip.
+ *  This is the real desktop→phone handoff (the fixture was only a dev stand-in). */
+export async function importBundleFromUri(uri: string): Promise<LoadedTrip> {
+  const src = new File(uri)
+  const zipBytes = src.bytesSync()
+  const loaded = unpackZipBytes(zipBytes)
+  // Best-effort cleanup of the inbox copy iOS handed us.
+  try {
+    if (src.exists) src.delete()
+  } catch {
+    // harmless if the OS already reclaimed it
   }
-
-  return { manifest, basemapMbtilesUrl }
+  return loaded
 }
 
 // Build the map overlays from the manifest. Kept here (not in the component) so

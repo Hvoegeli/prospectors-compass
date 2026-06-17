@@ -5,6 +5,7 @@ import {
   Alert,
   Image,
   Keyboard,
+  Linking,
   Modal,
   ScrollView,
   StyleSheet,
@@ -27,6 +28,7 @@ import {
 } from '@maplibre/maplibre-react-native'
 import * as Location from 'expo-location'
 import {
+  importBundleFromUri,
   loadTripBundle,
   scoredCellsFC,
   waypointsFC,
@@ -36,6 +38,7 @@ import {
 } from './src/bundle'
 import { appendFind, deleteFind, findsFC, loadFinds, photoUri, savePhoto, type Find } from './src/finds'
 import { bearingDegrees, cardinal16, distanceMeters, formatDistanceImperial } from './src/geo'
+import { ensureBasemapDirs, topoStyleIfAvailable } from './src/basemap'
 
 // Colorado I-70 corridor — a sane pre-trip fallback if we somehow render the map
 // before a footprint is known (we normally gate on the trip loading first).
@@ -145,6 +148,9 @@ export default function App() {
   // readout is derived live from this + the current GPS fix, so it updates as you
   // move without any extra subscription.
   const [navTargetId, setNavTargetId] = useState<number | null>(null)
+  // The offline topo basemap style, if the sideloaded statewide vector base +
+  // glyph fonts are present on the device (null → raster hillshade only).
+  const [topoStyle, setTopoStyle] = useState<StyleSpecification | null>(null)
   // Keyboard height, so the bottom find-form panel can lift above the keyboard
   // (otherwise it covers the note field and the Save button).
   const [kbHeight, setKbHeight] = useState(0)
@@ -178,6 +184,47 @@ export default function App() {
       active = false
     }
   }, [])
+
+  // Handle a .pcbundle opened from outside the app (AirDrop / Files → "Open in
+  // Prospector's Compass"). iOS launches us with the file URL, or delivers it via
+  // the 'url' event if we're already running; either way we import it in place of
+  // the current trip. This is the real desktop→phone handoff.
+  useEffect(() => {
+    let active = true
+    async function handleOpenUrl(url: string | null): Promise<void> {
+      if (!active || !url || !url.startsWith('file://')) return
+      try {
+        const loaded = await importBundleFromUri(url)
+        if (!active) return
+        didFit.current = false // re-fit the camera to the new trip's footprint
+        setNavTargetId(null)
+        setPanel(null)
+        setTripError(null)
+        setTrip(loaded)
+      } catch {
+        Alert.alert('Couldn’t open trip', 'That file could not be read as a Prospector’s Compass trip.')
+      }
+    }
+    Linking.getInitialURL().then(handleOpenUrl)
+    const sub = Linking.addEventListener('url', (e) => handleOpenUrl(e.url))
+    return () => {
+      active = false
+      sub.remove()
+    }
+  }, [])
+
+  // Ensure the sideload dirs exist and pick up a topo base map if one is on the
+  // device. Recomputed when the trip loads so the trip's shaded relief can be
+  // layered UNDER the topo (terrain shows in the footprint; roads/labels on top).
+  useEffect(() => {
+    ensureBasemapDirs()
+    const bm = trip?.manifest.basemap
+    const hill =
+      trip?.basemapMbtilesUrl && bm
+        ? { url: trip.basemapMbtilesUrl, tileSize: bm.tile_size, minzoom: bm.minzoom, maxzoom: bm.maxzoom }
+        : null
+    setTopoStyle(topoStyleIfAvailable(hill))
+  }, [trip])
 
   // Request foreground location, then watch position. GPS works with no cell
   // signal (the receiver is passive), so this functions fully in the field.
@@ -530,11 +577,13 @@ export default function App() {
           default ornaments (they sat UNDER the buttons), and the basemap is
           self-hosted public-domain USGS data, so no third-party attribution is
           owed. Data provenance lives in docs/DATA_SOURCES.md. */}
-      <Map ref={mapRef} style={styles.map} mapStyle={OFFLINE_STYLE} logo={false} attribution={false} onPress={onMapPress}>
+      <Map ref={mapRef} style={styles.map} mapStyle={topoStyle ?? OFFLINE_STYLE} logo={false} attribution={false} onPress={onMapPress}>
         <Camera ref={cameraRef} initialViewState={{ center: footprintCenter, zoom: 11.5 }} />
 
-        {/* Offline shaded-relief basemap, read straight from the bundled MBTiles. */}
-        {basemapMbtilesUrl && (
+        {/* Offline shaded-relief basemap, read straight from the bundled MBTiles.
+            Skipped when the topo vector base is active — an opaque raster on top
+            would hide the topo roads/labels (terrain shading is a later layer). */}
+        {!topoStyle && basemapMbtilesUrl && (
           <RasterSource
             id="basemap"
             tiles={[basemapMbtilesUrl]}
