@@ -29,11 +29,15 @@ import {
 import * as Location from 'expo-location'
 import {
   importBundleFromUri,
-  loadTripBundle,
+  listTrips,
+  loadActiveOrFixture,
+  loadTrip,
   scoredCellsFC,
+  setActiveTrip,
   waypointsFC,
   type LoadedTrip,
   type ScoredCell,
+  type TripSummary,
   type Waypoint,
 } from './src/bundle'
 import { appendFind, deleteFind, findsFC, loadFinds, photoUri, savePhoto, type Find } from './src/finds'
@@ -151,6 +155,8 @@ export default function App() {
   // The offline topo basemap style, if the sideloaded statewide vector base +
   // glyph fonts are present on the device (null → raster hillshade only).
   const [topoStyle, setTopoStyle] = useState<StyleSpecification | null>(null)
+  // Every trip stored on the phone, for the trip picker (refreshed on load/import).
+  const [trips, setTrips] = useState<TripSummary[]>([])
   // Keyboard height, so the bottom find-form panel can lift above the keyboard
   // (otherwise it covers the note field and the Save button).
   const [kbHeight, setKbHeight] = useState(0)
@@ -172,12 +178,14 @@ export default function App() {
   // lands the map has nothing offline to show.
   useEffect(() => {
     let active = true
-    loadTripBundle()
+    loadActiveOrFixture()
       .then((loaded) => {
-        if (active) setTrip(loaded)
+        if (!active) return
+        setTrip(loaded)
+        setTrips(listTrips())
       })
       .catch((err) => {
-        console.error('trip bundle load failed', err)
+        console.error('trip load failed', err)
         if (active) setTripError(String(err?.message ?? err))
       })
     return () => {
@@ -201,6 +209,7 @@ export default function App() {
         setPanel(null)
         setTripError(null)
         setTrip(loaded)
+        setTrips(listTrips())
       } catch {
         Alert.alert('Couldn’t open trip', 'That file could not be read as a Prospector’s Compass trip.')
       }
@@ -522,6 +531,25 @@ export default function App() {
     setNavTargetId(null)
   }
 
+  // Switch to another trip stored on the phone: persist it as active, reload its
+  // cells/waypoints/finds/basemap, and re-fit the camera to its footprint.
+  function switchTrip(id: number): void {
+    if (id === trip?.manifest.trip.id) {
+      setPanel(null)
+      return
+    }
+    try {
+      setActiveTrip(id)
+      const loaded = loadTrip(id)
+      didFit.current = false
+      setNavTargetId(null)
+      setTrip(loaded)
+      setPanel(null)
+    } catch {
+      Alert.alert('Couldn’t open trip', 'That trip could not be loaded.')
+    }
+  }
+
   function toggleVis(key: keyof LayerVis): void {
     setVis((v) => ({ ...v, [key]: !v[key] }))
   }
@@ -750,6 +778,35 @@ export default function App() {
                 {finds.length === 1 ? '' : 's'}
               </Text>
               <ScrollView style={styles.wpList}>
+                {/* Trip library: switch between trips loaded onto the phone.
+                    Shown only when there's more than one to choose from. */}
+                {trips.length > 1 && (
+                  <View>
+                    <Text style={styles.gateHeading}>Trips on this phone</Text>
+                    {trips.map((t) => {
+                      const isActive = t.id === manifest.trip.id
+                      return (
+                        <TouchableOpacity
+                          key={t.id}
+                          style={styles.tripRow}
+                          onPress={() => switchTrip(t.id)}
+                          disabled={isActive}
+                          accessibilityLabel={`Open trip ${t.name}`}
+                        >
+                          <View style={styles.findRowText}>
+                            <Text style={styles.wpTitle} numberOfLines={1}>{t.name}</Text>
+                            <Text style={styles.wpNote} numberOfLines={1}>
+                              {t.scoredCount} cells · {t.waypointCount} spot{t.waypointCount === 1 ? '' : 's'}
+                            </Text>
+                          </View>
+                          <Text style={isActive ? styles.tripActiveTag : styles.tripSwitchTag}>
+                            {isActive ? 'Active' : 'Open'}
+                          </Text>
+                        </TouchableOpacity>
+                      )
+                    })}
+                  </View>
+                )}
                 <Text style={styles.gateHeading}>Planned spots</Text>
                 {manifest.trip.waypoints.length === 0 && (
                   <Text style={styles.panelBody}>No saved spots in this trip yet.</Text>
@@ -1188,6 +1245,16 @@ const styles = StyleSheet.create({
     borderTopColor: 'rgba(148,163,184,0.25)',
   },
   findRowText: { flex: 1 },
+  tripRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(148,163,184,0.25)',
+  },
+  tripActiveTag: { color: '#34d399', fontSize: 12, fontWeight: '700' },
+  tripSwitchTag: { color: '#cbd5e1', fontSize: 12, fontWeight: '600' },
   findDelete: { paddingHorizontal: 8, paddingVertical: 4 },
   findDeleteText: { color: '#f87171', fontSize: 17, fontWeight: '600' },
   findThumb: { width: 44, height: 44, borderRadius: 6, backgroundColor: 'rgba(148,163,184,0.15)' },

@@ -90,7 +90,9 @@ export type LoadedTrip = {
   basemapMbtilesUrl: string | null
 }
 
-const TRIP_DIR = 'trip'
+const LEGACY_TRIP_DIR = 'trip' // pre-library single-trip location (migrated once)
+const TRIPS_DIR = 'trips' // Documents/trips/<tripId>/ — one folder per trip
+const ACTIVE_FILE = 'active-trip.json' // Documents/active-trip.json → { id }
 const MANIFEST_NAME = 'trip.json'
 const BASEMAP_NAME = 'terrain.mbtiles'
 
@@ -106,71 +108,169 @@ function mbtilesUrlFor(file: File): string {
   return `mbtiles://${file.uri.replace(/^file:\/\//, '')}`
 }
 
-// Unpack a .pcbundle's bytes into Documents/trip (OVERWRITING any existing trip)
-// and return the loaded trip. Shared by the dev fixture path and AirDrop import,
-// so both produce identical on-disk state.
-function unpackZipBytes(zipBytes: Uint8Array): LoadedTrip {
-  const tripDir = new Directory(Paths.document, TRIP_DIR)
-  if (!tripDir.exists) tripDir.create({ idempotent: true })
-  const entries = unzipSync(zipBytes)
+// One folder per trip under Documents/trips/<id>/; the active trip id lives in
+// Documents/active-trip.json. Importing ADDS a trip (keyed by its manifest id)
+// and makes it active, rather than overwriting a single slot — so the phone
+// holds a library of trips the user can switch between.
 
+/** A lightweight trip descriptor for the picker (no cells/geometry loaded). */
+export type TripSummary = {
+  id: number
+  name: string
+  exportedAt: string
+  center: [number, number] // footprint center [lon, lat]
+  waypointCount: number
+  scoredCount: number
+}
+
+function tripsRoot(): Directory {
+  return new Directory(Paths.document, TRIPS_DIR)
+}
+function tripDir(id: number): Directory {
+  return new Directory(tripsRoot(), String(id))
+}
+function activeFile(): File {
+  return new File(Paths.document, ACTIVE_FILE)
+}
+
+function getActiveId(): number | null {
+  const f = activeFile()
+  if (!f.exists) return null
+  try {
+    const j = JSON.parse(f.textSync()) as { id?: unknown }
+    return typeof j.id === 'number' ? j.id : null
+  } catch {
+    return null
+  }
+}
+
+/** Make `id` the active trip (persisted across launches). */
+export function setActiveTrip(id: number): void {
+  const f = activeFile()
+  f.create({ overwrite: true })
+  f.write(JSON.stringify({ id }))
+}
+
+function loadedFromDir(dir: Directory): LoadedTrip {
+  const manifest = JSON.parse(new File(dir, MANIFEST_NAME).textSync()) as TripManifest
+  const basemapFile = new File(dir, BASEMAP_NAME)
+  return { manifest, basemapMbtilesUrl: basemapFile.exists ? mbtilesUrlFor(basemapFile) : null }
+}
+
+// Unpack a .pcbundle's bytes into trips/<id>/ (keyed by the manifest's trip id,
+// so re-importing the same trip updates it in place). Returns the id + load.
+function unpackZipToTrips(zipBytes: Uint8Array): { id: number; loaded: LoadedTrip } {
+  const entries = unzipSync(zipBytes)
   const manifestBytes = entries[MANIFEST_NAME]
   if (!manifestBytes) throw new Error('bundle is missing trip.json')
   const manifestText = strFromU8(manifestBytes)
   const manifest = JSON.parse(manifestText) as TripManifest
-  const manifestFile = new File(tripDir, MANIFEST_NAME)
+  const id = manifest.trip.id
+  const dir = tripDir(id)
+  if (!dir.exists) dir.create({ intermediates: true, idempotent: true })
+
+  const manifestFile = new File(dir, MANIFEST_NAME)
   manifestFile.create({ overwrite: true })
   manifestFile.write(manifestText)
 
-  let basemapMbtilesUrl: string | null = null
-  const basemapFile = new File(tripDir, BASEMAP_NAME)
+  const basemapFile = new File(dir, BASEMAP_NAME)
   const basemapBytes = entries[BASEMAP_NAME]
   if (basemapBytes) {
     basemapFile.create({ overwrite: true })
     basemapFile.write(basemapBytes)
-    basemapMbtilesUrl = mbtilesUrlFor(basemapFile)
   } else if (basemapFile.exists) {
-    // New trip carries no basemap — drop the previous trip's so it can't bleed through.
     basemapFile.delete()
   }
-
-  return { manifest, basemapMbtilesUrl }
+  return { id, loaded: loadedFromDir(dir) }
 }
 
-export async function loadTripBundle(): Promise<LoadedTrip> {
-  const tripDir = new Directory(Paths.document, TRIP_DIR)
-  const manifestFile = new File(tripDir, MANIFEST_NAME)
-  const basemapFile = new File(tripDir, BASEMAP_NAME)
-
-  // Already unpacked on a previous launch (or imported) — just read it back.
-  if (manifestFile.exists) {
-    const manifest = JSON.parse(manifestFile.textSync()) as TripManifest
-    return {
-      manifest,
-      basemapMbtilesUrl: basemapFile.exists ? mbtilesUrlFor(basemapFile) : null,
-    }
-  }
-
-  // First run: unpack the dev fixture shipped as an app asset.
-  const asset = Asset.fromModule(FIXTURE)
-  await asset.downloadAsync() // makes asset.localUri a readable file:// path
-  const zipBytes = new File(asset.localUri ?? asset.uri).bytesSync()
-  return unpackZipBytes(zipBytes)
-}
-
-/** Import a .pcbundle the user opened/AirDropped into the app: read the file at
- *  `uri`, unpack it in place of the current trip, and return the loaded trip.
- *  This is the real desktop→phone handoff (the fixture was only a dev stand-in). */
+/** Import a .pcbundle the user opened/AirDropped: read it, add it to the library
+ *  (keyed by trip id), make it active, and return the loaded trip. The real
+ *  desktop→phone handoff (the fixture is only a dev stand-in). */
 export async function importBundleFromUri(uri: string): Promise<LoadedTrip> {
   const src = new File(uri)
-  const zipBytes = src.bytesSync()
-  const loaded = unpackZipBytes(zipBytes)
-  // Best-effort cleanup of the inbox copy iOS handed us.
+  const { id, loaded } = unpackZipToTrips(src.bytesSync())
+  setActiveTrip(id)
   try {
-    if (src.exists) src.delete()
+    if (src.exists) src.delete() // best-effort cleanup of the inbox copy
   } catch {
     // harmless if the OS already reclaimed it
   }
+  return loaded
+}
+
+/** Every trip stored on the phone, newest first. */
+export function listTrips(): TripSummary[] {
+  const root = tripsRoot()
+  if (!root.exists) return []
+  const out: TripSummary[] = []
+  for (const entry of root.list()) {
+    if (!(entry instanceof Directory)) continue
+    const mf = new File(entry, MANIFEST_NAME)
+    if (!mf.exists) continue
+    try {
+      const m = JSON.parse(mf.textSync()) as TripManifest
+      const [w, s, e, n] = m.footprint.bbox
+      out.push({
+        id: m.trip.id,
+        name: m.trip.name,
+        exportedAt: m.exported_at,
+        center: [(w + e) / 2, (s + n) / 2],
+        waypointCount: m.trip.waypoints.length,
+        scoredCount: m.scored_areas.count,
+      })
+    } catch {
+      // skip an unreadable trip folder rather than break the whole list
+    }
+  }
+  return out.sort((a, b) => (a.exportedAt < b.exportedAt ? 1 : -1))
+}
+
+/** Load one stored trip by id. */
+export function loadTrip(id: number): LoadedTrip {
+  return loadedFromDir(tripDir(id))
+}
+
+// Migrate the pre-library single-trip folder (Documents/trip) into the library
+// once, so upgrading doesn't lose the trip already on the phone.
+function migrateLegacyTrip(): void {
+  const legacy = new Directory(Paths.document, LEGACY_TRIP_DIR)
+  const legacyManifest = new File(legacy, MANIFEST_NAME)
+  if (!legacyManifest.exists) return
+  try {
+    const m = JSON.parse(legacyManifest.textSync()) as TripManifest
+    const dir = tripDir(m.trip.id)
+    if (!dir.exists) {
+      dir.create({ intermediates: true, idempotent: true })
+      const destManifest = new File(dir, MANIFEST_NAME)
+      destManifest.create({ overwrite: true })
+      destManifest.write(legacyManifest.textSync())
+      const legacyBase = new File(legacy, BASEMAP_NAME)
+      if (legacyBase.exists) legacyBase.copy(new File(dir, BASEMAP_NAME))
+      if (getActiveId() == null) setActiveTrip(m.trip.id)
+    }
+    legacy.delete() // remove so we don't migrate again
+  } catch {
+    // if migration fails, leave the legacy folder; the fixture still loads
+  }
+}
+
+/** Load the active trip (or the most recent), seeding the library with the dev
+ *  fixture on a fresh install. Replaces the old single-trip loader. */
+export async function loadActiveOrFixture(): Promise<LoadedTrip> {
+  migrateLegacyTrip()
+  const trips = listTrips()
+  if (trips.length > 0) {
+    const activeId = getActiveId()
+    const target = activeId != null && trips.some((t) => t.id === activeId) ? activeId : trips[0].id
+    setActiveTrip(target)
+    return loadTrip(target)
+  }
+  // Fresh install: seed the library with the bundled dev fixture.
+  const asset = Asset.fromModule(FIXTURE)
+  await asset.downloadAsync()
+  const { id, loaded } = unpackZipToTrips(new File(asset.localUri ?? asset.uri).bytesSync())
+  setActiveTrip(id)
   return loaded
 }
 
