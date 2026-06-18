@@ -28,6 +28,7 @@ import {
 } from '@maplibre/maplibre-react-native'
 import * as Location from 'expo-location'
 import {
+  contoursFC,
   importBundleFromUri,
   listTrips,
   loadActiveOrFixture,
@@ -121,7 +122,7 @@ const OFFLINE_STYLE: StyleSpecification = {
 type Fix = { lon: number; lat: number; accuracy: number | null }
 type Panel = 'trip' | 'layers' | 'logFind' | null
 // Which overlays are drawn — driven by the Layers panel toggles.
-type LayerVis = { basemap: boolean; scored: boolean; waypoints: boolean; finds: boolean }
+type LayerVis = { basemap: boolean; scored: boolean; waypoints: boolean; finds: boolean; contours: boolean }
 
 // Quick-pick kinds for logging a field find (stored as the kind string).
 const FIND_KINDS = ['Gold', 'Float', 'Outcrop', 'Other'] as const
@@ -136,7 +137,7 @@ export default function App() {
   // The loaded offline trip bundle (basemap + scored areas + waypoints).
   const [trip, setTrip] = useState<LoadedTrip | null>(null)
   const [tripError, setTripError] = useState<string | null>(null)
-  const [vis, setVis] = useState<LayerVis>({ basemap: true, scored: true, waypoints: true, finds: true })
+  const [vis, setVis] = useState<LayerVis>({ basemap: true, scored: true, waypoints: true, finds: true, contours: true })
 
   // Field finds logged on this phone (append-only, persisted locally per trip),
   // plus the in-progress log-a-find form state.
@@ -307,6 +308,7 @@ export default function App() {
 
   // Derive the map overlays from the manifest once (not on every render).
   const cellsFC = useMemo(() => (trip ? scoredCellsFC(trip.manifest) : null), [trip])
+  const contoursFCData = useMemo(() => (trip ? contoursFC(trip.manifest) : null), [trip])
   const wpsFC = useMemo(() => (trip ? waypointsFC(trip.manifest) : null), [trip])
   const findsFCData = useMemo(() => findsFC(finds), [finds])
 
@@ -658,6 +660,29 @@ export default function App() {
           />
         </GeoJSONSource>
 
+        {/* Elevation contours from the bundle (40 ft lines; heavier 200 ft index
+            lines carry a labelled elevation). Drawn over the heat cells so you can
+            orient by terrain, under the markers. Labels need glyphs, so they only
+            render with the topo base active. */}
+        {contoursFCData && (
+          <GeoJSONSource id="contours" data={contoursFCData}>
+            <Layer
+              id="contour-line"
+              type="line"
+              filter={['==', ['get', 'is_index'], false]}
+              layout={{ visibility: vis.contours ? 'visible' : 'none' }}
+              paint={{ 'line-color': '#8a5a2b', 'line-width': 0.7, 'line-opacity': 0.45 }}
+            />
+            <Layer
+              id="contour-index"
+              type="line"
+              filter={['==', ['get', 'is_index'], true]}
+              layout={{ visibility: vis.contours ? 'visible' : 'none' }}
+              paint={{ 'line-color': '#6b4423', 'line-width': 1.4, 'line-opacity': 0.65 }}
+            />
+          </GeoJSONSource>
+        )}
+
         {/* Saved waypoints. Circles only — the offline map has no font glyphs, so
             no text labels (same constraint we hit on the desktop contours). */}
         <GeoJSONSource id="waypoints" data={wpsFC}>
@@ -863,6 +888,7 @@ export default function App() {
             <View>
               <LayerToggle label="Terrain basemap" on={vis.basemap} disabled={!basemapMbtilesUrl} onPress={() => toggleVis('basemap')} />
               <LayerToggle label="Scored areas" on={vis.scored} onPress={() => toggleVis('scored')} />
+              <LayerToggle label="Contour lines" on={vis.contours} onPress={() => toggleVis('contours')} />
               <LayerToggle label="Saved spots" on={vis.waypoints} onPress={() => toggleVis('waypoints')} />
               <LayerToggle label="My finds" on={vis.finds} onPress={() => toggleVis('finds')} />
               {!basemapMbtilesUrl && (

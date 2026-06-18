@@ -60,6 +60,15 @@ export type ScoredCell = {
   gates?: ScoreGate[]
 }
 
+// One elevation contour line, clipped to the trip footprint by the desktop.
+// `geometry` is a GeoJSON LineString/MultiLineString STRING (like ScoredCell).
+// `is_index` marks the heavier 200 ft lines that carry an elevation label.
+export type Contour = {
+  elev_ft: number
+  is_index: boolean
+  geometry: string
+}
+
 export type TripManifest = {
   format: string
   version: number
@@ -73,6 +82,8 @@ export type TripManifest = {
     count: number
     cells: ScoredCell[]
   }
+  /** Elevation contour lines over the footprint (absent on older bundles). */
+  contours?: Contour[]
   basemap: {
     file: string
     format: string
@@ -298,6 +309,30 @@ export function scoredCellsFC(manifest: TripManifest): GeoJSON.FeatureCollection
       properties: { idx, score: cell.score, band: cell.band ?? '' },
     })
   })
+  return { type: 'FeatureCollection', features }
+}
+
+/** Contour lines → a LineString FeatureCollection carrying elev_ft + is_index for
+ *  styling (heavier index lines) and labels. Empty if the bundle carried none. */
+export function contoursFC(manifest: TripManifest): GeoJSON.FeatureCollection {
+  const features: GeoJSON.Feature[] = []
+  for (const c of manifest.contours ?? []) {
+    let geometry: GeoJSON.Geometry
+    try {
+      geometry = JSON.parse(c.geometry) as GeoJSON.Geometry
+    } catch {
+      continue // skip a malformed line rather than crash the map
+    }
+    // Only line geometries belong in a line layer. Clipping can occasionally
+    // yield a Point/GeometryCollection at a box corner — those would break the
+    // native renderer, so drop anything that isn't a (Multi)LineString.
+    if (geometry?.type !== 'LineString' && geometry?.type !== 'MultiLineString') continue
+    features.push({
+      type: 'Feature',
+      geometry,
+      properties: { elev_ft: c.elev_ft, is_index: c.is_index },
+    })
+  }
   return { type: 'FeatureCollection', features }
 }
 

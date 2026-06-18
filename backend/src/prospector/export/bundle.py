@@ -28,6 +28,9 @@ import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 
+from sqlalchemy import text
+
+from prospector.db.base import engine
 from prospector.engine.scoring import score_area
 from prospector.ingest.storage import PROCESSED_DIR, ensure_dir
 from prospector.ingest.terrain import TILES_DIR, _container_path, _gdal
@@ -109,6 +112,40 @@ def clip_basemap(bbox: tuple[float, float, float, float], out_path: Path) -> Pat
     return out_path
 
 
+def _contours_for_bbox(bbox: tuple[float, float, float, float]) -> list[dict]:
+    """Elevation contour lines clipped to the footprint, for the phone's topo
+    lines. Each item is ``{elev_ft, is_index, geometry}`` where geometry is a
+    GeoJSON LineString/MultiLineString string (mirrors how scored cells carry
+    their geometry). Returns ``[]`` when no contour data covers the area.
+
+    Clips each line to the bbox so the phone only carries what it shows; the
+    `geom && envelope` filter uses the GiST index (the same selective pattern the
+    `/layers` viewport endpoint uses on the pre-subdivided contour rows).
+    """
+    minx, miny, maxx, maxy = bbox
+    env = "ST_MakeEnvelope(:minx, :miny, :maxx, :maxy, 4326)"
+    # Clip to the footprint, then simplify gently (~5 m tolerance in degrees) —
+    # contour lines don't need sub-metre precision for field orientation, and
+    # this roughly halves the bundle's contour payload and the phone's render load.
+    sql = text(
+        f"SELECT elev_ft, is_index, "
+        f"ST_AsGeoJSON(ST_SimplifyPreserveTopology(ST_ClipByBox2D(geom, {env}), 0.00005), 6) AS geojson "
+        f"FROM contour_lines WHERE geom && {env}"
+    )
+    params = {"minx": minx, "miny": miny, "maxx": maxx, "maxy": maxy}
+    with engine.connect() as conn:
+        rows = conn.execute(sql, params).all()
+
+    out: list[dict] = []
+    for elev_ft, is_index, geojson in rows:
+        # Clipping a line that only grazes the bbox edge can yield an empty
+        # geometry; skip those so the bundle carries no degenerate features.
+        if not geojson or '"coordinates":[]' in geojson:
+            continue
+        out.append({"elev_ft": int(elev_ft), "is_index": bool(is_index), "geometry": geojson})
+    return out
+
+
 def build_trip_bundle(
     trip_id: int,
     trip_name: str,
@@ -142,6 +179,7 @@ def build_trip_bundle(
             "trip": {"id": trip_id, "name": trip_name, "waypoints": waypoints},
             "footprint": {"bbox": list(bbox), "buffer_mi": buffer_mi},
             "scored_areas": scored,
+            "contours": _contours_for_bbox(bbox),
             "basemap": basemap_meta,
         }
 
