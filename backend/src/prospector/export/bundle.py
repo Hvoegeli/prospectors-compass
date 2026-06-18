@@ -146,6 +146,38 @@ def _contours_for_bbox(bbox: tuple[float, float, float, float]) -> list[dict]:
     return out
 
 
+def _land_for_bbox(bbox: tuple[float, float, float, float]) -> list[dict]:
+    """Land-ownership parcels clipped to the footprint, so the phone can show
+    private-vs-public boundaries offline. Each item is
+    ``{manager_name, manager_type, owner_type, public_access, geometry}`` where
+    geometry is a GeoJSON Polygon/MultiPolygon string. Parcels are usually few
+    and large, so this stays small. Returns ``[]`` when none cover the area.
+    """
+    minx, miny, maxx, maxy = bbox
+    env = "ST_MakeEnvelope(:minx, :miny, :maxx, :maxy, 4326)"
+    sql = text(
+        f"SELECT manager_name, manager_type, owner_type, public_access, "
+        f"ST_AsGeoJSON(ST_SimplifyPreserveTopology(ST_ClipByBox2D(geom, {env}), 0.00005), 6) AS geojson "
+        f"FROM land_ownership WHERE geom && {env}"
+    )
+    params = {"minx": minx, "miny": miny, "maxx": maxx, "maxy": maxy}
+    with engine.connect() as conn:
+        rows = conn.execute(sql, params).all()
+
+    out: list[dict] = []
+    for manager_name, manager_type, owner_type, public_access, geojson in rows:
+        if not geojson or '"coordinates":[]' in geojson:
+            continue
+        out.append({
+            "manager_name": manager_name,
+            "manager_type": manager_type,
+            "owner_type": owner_type,
+            "public_access": public_access,
+            "geometry": geojson,
+        })
+    return out
+
+
 def build_trip_bundle(
     trip_id: int,
     trip_name: str,
@@ -180,6 +212,7 @@ def build_trip_bundle(
             "footprint": {"bbox": list(bbox), "buffer_mi": buffer_mi},
             "scored_areas": scored,
             "contours": _contours_for_bbox(bbox),
+            "land": _land_for_bbox(bbox),
             "basemap": basemap_meta,
         }
 

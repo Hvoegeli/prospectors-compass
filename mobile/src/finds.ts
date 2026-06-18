@@ -137,6 +137,24 @@ export function photoUri(tripId: number, filename: string): string {
   return new File(photosDir(tripId), filename).uri
 }
 
+/** Remove every find + photo for a trip. Called when the trip itself is deleted
+ *  so its logged data doesn't linger as orphans. Best-effort. */
+export function deleteFindsForTrip(tripId: number): void {
+  for (const f of [findsFile(tripId), findsBackup(tripId)]) {
+    try {
+      if (f.exists) f.delete()
+    } catch {
+      // best-effort cleanup
+    }
+  }
+  try {
+    const dir = photosDir(tripId)
+    if (dir.exists) dir.delete()
+  } catch {
+    // best-effort cleanup
+  }
+}
+
 /** Finds → a Point FeatureCollection for the map markers. */
 export function findsFC(finds: Find[]): GeoJSON.FeatureCollection {
   return {

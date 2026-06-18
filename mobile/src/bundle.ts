@@ -16,6 +16,16 @@ import { Asset } from 'expo-asset'
 import { Directory, File, Paths } from 'expo-file-system'
 import { strFromU8, unzipSync } from 'fflate'
 
+// A saved spot's rationale (same shape as a scored cell's): the engine score,
+// confidence band, factor breakdown, and land-status gates. Present on spots
+// saved from the engine; absent/loose on hand-placed ones.
+export type WaypointDetails = {
+  band?: string
+  score?: number
+  factors?: ScoreFactor[]
+  gates?: ScoreGate[]
+}
+
 export type Waypoint = {
   id: number
   lat: number
@@ -23,7 +33,7 @@ export type Waypoint = {
   kind?: string
   note?: string
   title?: string
-  details?: string
+  details?: WaypointDetails | null
 }
 
 // One weighted-overlay factor that fed a cell's score. `contribution` is already
@@ -69,6 +79,17 @@ export type Contour = {
   geometry: string
 }
 
+// One land-ownership parcel, clipped to the footprint. `geometry` is a GeoJSON
+// Polygon/MultiPolygon STRING. The phone colors parcels by `manager_name` so
+// private (need permission) reads distinctly from open BLM/USFS ground.
+export type LandParcel = {
+  manager_name: string | null
+  manager_type: string | null
+  owner_type: string | null
+  public_access: string | null
+  geometry: string
+}
+
 export type TripManifest = {
   format: string
   version: number
@@ -84,6 +105,8 @@ export type TripManifest = {
   }
   /** Elevation contour lines over the footprint (absent on older bundles). */
   contours?: Contour[]
+  /** Land-ownership parcels over the footprint (absent on older bundles). */
+  land?: LandParcel[]
   basemap: {
     file: string
     format: string
@@ -242,6 +265,17 @@ export function loadTrip(id: number): LoadedTrip {
   return loadedFromDir(tripDir(id))
 }
 
+/** Delete a stored trip's folder (map + scored cells). The caller handles the
+ *  trip's finds/photos and picks a new active trip if this one was active. */
+export function deleteTrip(id: number): void {
+  const dir = tripDir(id)
+  try {
+    if (dir.exists) dir.delete()
+  } catch {
+    // best-effort; a leftover folder is harmless (listTrips skips unreadable ones)
+  }
+}
+
 // Migrate the pre-library single-trip folder (Documents/trip) into the library
 // once, so upgrading doesn't lose the trip already on the phone.
 function migrateLegacyTrip(): void {
@@ -331,6 +365,32 @@ export function contoursFC(manifest: TripManifest): GeoJSON.FeatureCollection {
       type: 'Feature',
       geometry,
       properties: { elev_ft: c.elev_ft, is_index: c.is_index },
+    })
+  }
+  return { type: 'FeatureCollection', features }
+}
+
+/** Land parcels → a Polygon FeatureCollection carrying manager_name (for coloring)
+ *  and the ownership detail. Empty if the bundle carried none. */
+export function landFC(manifest: TripManifest): GeoJSON.FeatureCollection {
+  const features: GeoJSON.Feature[] = []
+  for (const p of manifest.land ?? []) {
+    let geometry: GeoJSON.Geometry
+    try {
+      geometry = JSON.parse(p.geometry) as GeoJSON.Geometry
+    } catch {
+      continue
+    }
+    if (geometry?.type !== 'Polygon' && geometry?.type !== 'MultiPolygon') continue
+    features.push({
+      type: 'Feature',
+      geometry,
+      properties: {
+        manager_name: p.manager_name ?? '',
+        manager_type: p.manager_type ?? '',
+        owner_type: p.owner_type ?? '',
+        public_access: p.public_access ?? '',
+      },
     })
   }
   return { type: 'FeatureCollection', features }

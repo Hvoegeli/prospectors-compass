@@ -29,7 +29,9 @@ import {
 import * as Location from 'expo-location'
 import {
   contoursFC,
+  deleteTrip,
   importBundleFromUri,
+  landFC,
   listTrips,
   loadActiveOrFixture,
   loadTrip,
@@ -41,7 +43,7 @@ import {
   type TripSummary,
   type Waypoint,
 } from './src/bundle'
-import { appendFind, deleteFind, findsFC, loadFinds, photoUri, savePhoto, type Find } from './src/finds'
+import { appendFind, deleteFind, deleteFindsForTrip, findsFC, loadFinds, photoUri, savePhoto, type Find } from './src/finds'
 import { bearingDegrees, cardinal16, distanceMeters, formatDistanceImperial } from './src/geo'
 import { ensureBasemapDirs, topoStyleIfAvailable } from './src/basemap'
 
@@ -74,6 +76,38 @@ const LAND_STATUS_DISCLAIMER =
   'right to prospect or collect. Boundaries are approximate and may be out of ' +
   'date. Always verify on the ground and get landowner or agency permission ' +
   'before entering or digging.'
+
+// Land-ownership colors, mirrored verbatim from the desktop (MapView OWNERSHIP_GROUPS):
+// parcels are colored by manager_name so private (need permission) reads distinctly
+// from open BLM/USFS ground. Kept as a single source of truth for the fill + legend.
+const LAND_GROUPS: { short: string; color: string; managers: string[] }[] = [
+  { short: 'BLM/USFS', color: '#3f8f5f', managers: ['Bureau of Land Management', 'Forest Service'] },
+  {
+    short: 'Other fed',
+    color: '#5b7fa8',
+    managers: [
+      'U.S. Fish and Wildlife Service',
+      'Bureau of Reclamation',
+      'Army Corps of Engineers',
+      'National Park Service',
+      'Department of Energy',
+    ],
+  },
+  {
+    short: 'State',
+    color: '#e0a030',
+    managers: ['State Fish and Wildlife', 'State Land Board', 'State Park and Recreation', 'Other or Unknown State Land'],
+  },
+  {
+    short: 'Local',
+    color: '#d9734e',
+    managers: ['City Land', 'County Land', 'Regional Agency Land', 'Regional Water Districts', 'Other or Unknown Local Government'],
+  },
+  { short: 'Private', color: '#a8556b', managers: ['Private', 'Non-Governmental Organization'] },
+  { short: 'Joint/Unk', color: '#94a3b8', managers: ['Joint', 'Unknown'] },
+]
+// The map fill mirrors these colors as an inline `match` on manager_name (see the
+// land-fill Layer); LAND_GROUPS drives the Layers-panel legend so the two agree.
 
 // Resolve a promise but give up after `ms`, yielding null instead of hanging.
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | null> {
@@ -122,7 +156,7 @@ const OFFLINE_STYLE: StyleSpecification = {
 type Fix = { lon: number; lat: number; accuracy: number | null }
 type Panel = 'trip' | 'layers' | 'logFind' | null
 // Which overlays are drawn — driven by the Layers panel toggles.
-type LayerVis = { basemap: boolean; scored: boolean; waypoints: boolean; finds: boolean; contours: boolean }
+type LayerVis = { basemap: boolean; scored: boolean; waypoints: boolean; finds: boolean; contours: boolean; land: boolean }
 
 // Quick-pick kinds for logging a field find (stored as the kind string).
 const FIND_KINDS = ['Gold', 'Float', 'Outcrop', 'Other'] as const
@@ -137,7 +171,7 @@ export default function App() {
   // The loaded offline trip bundle (basemap + scored areas + waypoints).
   const [trip, setTrip] = useState<LoadedTrip | null>(null)
   const [tripError, setTripError] = useState<string | null>(null)
-  const [vis, setVis] = useState<LayerVis>({ basemap: true, scored: true, waypoints: true, finds: true, contours: true })
+  const [vis, setVis] = useState<LayerVis>({ basemap: true, scored: true, waypoints: true, finds: true, contours: true, land: true })
 
   // Field finds logged on this phone (append-only, persisted locally per trip),
   // plus the in-progress log-a-find form state.
@@ -168,6 +202,9 @@ export default function App() {
   // round-trip — only the plain `idx` integer does — so we re-look-up the full
   // cell in memory to render its rationale.
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null)
+  // The planned spot the user tapped (pin or trip list), or null. Shows its full
+  // saved rationale (score/factors/gates) — the info that came with the spot.
+  const [selectedWaypoint, setSelectedWaypoint] = useState<Waypoint | null>(null)
 
   const subRef = useRef<Location.LocationSubscription | null>(null)
   const cameraRef = useRef<CameraRef>(null)
@@ -309,6 +346,7 @@ export default function App() {
   // Derive the map overlays from the manifest once (not on every render).
   const cellsFC = useMemo(() => (trip ? scoredCellsFC(trip.manifest) : null), [trip])
   const contoursFCData = useMemo(() => (trip ? contoursFC(trip.manifest) : null), [trip])
+  const landFCData = useMemo(() => (trip ? landFC(trip.manifest) : null), [trip])
   const wpsFC = useMemo(() => (trip ? waypointsFC(trip.manifest) : null), [trip])
   const findsFCData = useMemo(() => findsFC(finds), [finds])
 
@@ -496,14 +534,30 @@ export default function App() {
     const pt = e.nativeEvent?.point
     if (!pt || !mapRef.current) return
     try {
+      // A planned spot's pin wins over the cell beneath it — tapping a spot should
+      // show the spot's own saved rationale.
+      const wpFeats = await mapRef.current.queryRenderedFeatures(pt, { layers: ['wp-circles'] })
+      const wpId = wpFeats?.[0]?.properties?.id
+      if (wpId != null) {
+        const wp = trip?.manifest.trip.waypoints.find((w) => w.id === wpId) ?? null
+        if (wp) {
+          setSelectedWaypoint(wp)
+          setSelectedIdx(null)
+          setPanel(null)
+          return
+        }
+      }
       const feats = await mapRef.current.queryRenderedFeatures(pt, { layers: ['scored-fill'] })
       const raw = feats?.[0]?.properties?.idx
       const idx = typeof raw === 'string' ? Number.parseInt(raw, 10) : raw
       if (typeof idx === 'number' && Number.isInteger(idx)) {
         setSelectedIdx(idx)
+        setSelectedWaypoint(null)
         setPanel(null)
       } else {
-        setSelectedIdx(null) // tapped empty space — close any open rationale card
+        // tapped empty space — close any open card
+        setSelectedIdx(null)
+        setSelectedWaypoint(null)
       }
     } catch {
       // query failed (map not ready) — ignore
@@ -523,6 +577,14 @@ export default function App() {
     }
   }
 
+  // Open a planned spot's detail card (its saved score/factors/gates/land status)
+  // and center the map on it. The card is the full info that came with the spot.
+  function openWaypoint(w: Waypoint): void {
+    setSelectedWaypoint(w)
+    setSelectedIdx(null)
+    flyTo(w.lon, w.lat) // also closes the panel
+  }
+
   // Start navigating to a waypoint: set it as the target and close the panel so
   // the on-map bearing/distance readout is visible. clearNav stops navigating.
   function navigateTo(w: Waypoint): void {
@@ -531,6 +593,17 @@ export default function App() {
   }
   function clearNav(): void {
     setNavTargetId(null)
+  }
+
+  // Open Apple Maps with DRIVING directions to a spot. Online by design — used at
+  // home/trailhead with signal to navigate the drive in; once parked and off-grid,
+  // the app's own offline map + bearing/distance readout takes over. Mirrors the
+  // desktop popup's "Apple ↗" directions link.
+  function openDirections(lat: number, lon: number): void {
+    const url = `http://maps.apple.com/?daddr=${lat.toFixed(6)},${lon.toFixed(6)}&dirflg=d`
+    Linking.openURL(url).catch(() =>
+      Alert.alert('Couldn’t open Maps', 'Apple Maps could not be opened for directions.'),
+    )
   }
 
   // Switch to another trip stored on the phone: persist it as active, reload its
@@ -552,6 +625,39 @@ export default function App() {
     }
   }
 
+  // Delete a trip and everything logged on it (finds + photos), behind a confirm.
+  // If it was the active trip, fall back to another (or the re-seeded fixture).
+  function confirmDeleteTrip(t: TripSummary): void {
+    Alert.alert(
+      'Delete trip?',
+      `Removes "${t.name}" and everything logged on it (finds + photos). This can't be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            const wasActive = t.id === trip?.manifest.trip.id
+            deleteTrip(t.id)
+            deleteFindsForTrip(t.id)
+            setTrips(listTrips())
+            if (wasActive) {
+              try {
+                const loaded = await loadActiveOrFixture()
+                didFit.current = false
+                setNavTargetId(null)
+                setTrip(loaded)
+                setTrips(listTrips())
+              } catch {
+                // the deleted trip's files are gone; leave the current view as-is
+              }
+            }
+          },
+        },
+      ],
+    )
+  }
+
   function toggleVis(key: keyof LayerVis): void {
     setVis((v) => ({ ...v, [key]: !v[key] }))
   }
@@ -561,6 +667,7 @@ export default function App() {
   // exclusion, instead of repeating it at every bar button.
   function openPanel(p: Exclude<Panel, null>): void {
     setSelectedIdx(null)
+    setSelectedWaypoint(null)
     setPendingPhotoUri(null) // discard any unsaved photo when entering/leaving the form
     setPanel((cur) => (cur === p ? null : p))
   }
@@ -660,6 +767,39 @@ export default function App() {
           />
         </GeoJSONSource>
 
+        {/* Land ownership from the bundle, colored by manager (private vs open
+            BLM/USFS) so you can see whose ground you're on. Above the heat cells
+            so boundaries read; a dark outline keeps parcel edges crisp. */}
+        {landFCData && (
+          <GeoJSONSource id="land" data={landFCData}>
+            <Layer
+              id="land-fill"
+              type="fill"
+              layout={{ visibility: vis.land ? 'visible' : 'none' }}
+              paint={{
+                'fill-color': [
+                  'match',
+                  ['get', 'manager_name'],
+                  ['Bureau of Land Management', 'Forest Service'], '#3f8f5f',
+                  ['U.S. Fish and Wildlife Service', 'Bureau of Reclamation', 'Army Corps of Engineers', 'National Park Service', 'Department of Energy'], '#5b7fa8',
+                  ['State Fish and Wildlife', 'State Land Board', 'State Park and Recreation', 'Other or Unknown State Land'], '#e0a030',
+                  ['City Land', 'County Land', 'Regional Agency Land', 'Regional Water Districts', 'Other or Unknown Local Government'], '#d9734e',
+                  ['Private', 'Non-Governmental Organization'], '#a8556b',
+                  ['Joint', 'Unknown'], '#94a3b8',
+                  '#64748b',
+                ],
+                'fill-opacity': 0.32,
+              }}
+            />
+            <Layer
+              id="land-outline"
+              type="line"
+              layout={{ visibility: vis.land ? 'visible' : 'none' }}
+              paint={{ 'line-color': 'rgba(15,23,42,0.55)', 'line-width': 1 }}
+            />
+          </GeoJSONSource>
+        )}
+
         {/* Elevation contours from the bundle (40 ft lines; heavier 200 ft index
             lines carry a labelled elevation). Drawn over the heat cells so you can
             orient by terrain, under the markers. Labels need glyphs, so they only
@@ -671,14 +811,14 @@ export default function App() {
               type="line"
               filter={['==', ['get', 'is_index'], false]}
               layout={{ visibility: vis.contours ? 'visible' : 'none' }}
-              paint={{ 'line-color': '#8a5a2b', 'line-width': 0.7, 'line-opacity': 0.45 }}
+              paint={{ 'line-color': '#6b3f1d', 'line-width': 1, 'line-opacity': 0.7 }}
             />
             <Layer
               id="contour-index"
               type="line"
               filter={['==', ['get', 'is_index'], true]}
               layout={{ visibility: vis.contours ? 'visible' : 'none' }}
-              paint={{ 'line-color': '#6b4423', 'line-width': 1.4, 'line-opacity': 0.65 }}
+              paint={{ 'line-color': '#4f2e15', 'line-width': 2, 'line-opacity': 0.9 }}
             />
           </GeoJSONSource>
         )}
@@ -767,6 +907,13 @@ export default function App() {
             )}
           </View>
           <TouchableOpacity
+            style={styles.navHudGo}
+            onPress={() => openDirections(navTarget.lat, navTarget.lon)}
+            accessibilityLabel="Driving directions to this waypoint"
+          >
+            <Text style={styles.navHudGoText}>🧭</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
             onPress={clearNav}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             accessibilityLabel="Stop navigating"
@@ -811,23 +958,30 @@ export default function App() {
                     {trips.map((t) => {
                       const isActive = t.id === manifest.trip.id
                       return (
-                        <TouchableOpacity
-                          key={t.id}
-                          style={styles.tripRow}
-                          onPress={() => switchTrip(t.id)}
-                          disabled={isActive}
-                          accessibilityLabel={`Open trip ${t.name}`}
-                        >
-                          <View style={styles.findRowText}>
+                        <View key={t.id} style={styles.tripRow}>
+                          <TouchableOpacity
+                            style={styles.findRowText}
+                            onPress={() => switchTrip(t.id)}
+                            disabled={isActive}
+                            accessibilityLabel={`Open trip ${t.name}`}
+                          >
                             <Text style={styles.wpTitle} numberOfLines={1}>{t.name}</Text>
                             <Text style={styles.wpNote} numberOfLines={1}>
                               {t.scoredCount} cells · {t.waypointCount} spot{t.waypointCount === 1 ? '' : 's'}
                             </Text>
-                          </View>
+                          </TouchableOpacity>
                           <Text style={isActive ? styles.tripActiveTag : styles.tripSwitchTag}>
                             {isActive ? 'Active' : 'Open'}
                           </Text>
-                        </TouchableOpacity>
+                          <TouchableOpacity
+                            style={styles.tripDelete}
+                            onPress={() => confirmDeleteTrip(t)}
+                            hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
+                            accessibilityLabel={`Delete trip ${t.name}`}
+                          >
+                            <Text style={styles.findDeleteText}>✕</Text>
+                          </TouchableOpacity>
+                        </View>
                       )
                     })}
                   </View>
@@ -841,9 +995,16 @@ export default function App() {
                   const active = navTargetId === w.id
                   return (
                     <View key={w.id} style={styles.wpRow}>
-                      <TouchableOpacity style={styles.wpRowText} onPress={() => flyTo(w.lon, w.lat)}>
+                      <TouchableOpacity style={styles.wpRowText} onPress={() => openWaypoint(w)}>
                         <Text style={styles.wpTitle}>{label}</Text>
                         {!!w.note && <Text style={styles.wpNote} numberOfLines={1}>{w.note}</Text>}
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.wpDirections}
+                        onPress={() => openDirections(w.lat, w.lon)}
+                        accessibilityLabel={`Driving directions to ${label}`}
+                      >
+                        <Text style={styles.wpDirectionsText}>🧭</Text>
                       </TouchableOpacity>
                       <TouchableOpacity
                         style={[styles.wpGo, active && styles.wpGoActive]}
@@ -885,16 +1046,30 @@ export default function App() {
               </ScrollView>
             </View>
           ) : panel === 'layers' ? (
-            <View>
+            <ScrollView style={styles.layersList}>
+              {/* All toggles first so they're always visible together; the land
+                  legend + disclaimer go below and scroll (they can't be clipped). */}
               <LayerToggle label="Terrain basemap" on={vis.basemap} disabled={!basemapMbtilesUrl} onPress={() => toggleVis('basemap')} />
               <LayerToggle label="Scored areas" on={vis.scored} onPress={() => toggleVis('scored')} />
+              <LayerToggle label="Land status" on={vis.land} onPress={() => toggleVis('land')} />
               <LayerToggle label="Contour lines" on={vis.contours} onPress={() => toggleVis('contours')} />
               <LayerToggle label="Saved spots" on={vis.waypoints} onPress={() => toggleVis('waypoints')} />
               <LayerToggle label="My finds" on={vis.finds} onPress={() => toggleVis('finds')} />
+              {vis.land && (
+                <View style={styles.landLegend}>
+                  {LAND_GROUPS.map((g) => (
+                    <View key={g.short} style={styles.landLegendRow}>
+                      <View style={[styles.landSwatch, { backgroundColor: g.color }]} />
+                      <Text style={styles.landLegendText}>{g.short}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+              {vis.land && <Text style={styles.landDisc}>{LAND_STATUS_DISCLAIMER}</Text>}
               {!basemapMbtilesUrl && (
                 <Text style={styles.panelMeta}>This bundle carried no basemap — only the scored areas and spots are shown.</Text>
               )}
-            </View>
+            </ScrollView>
           ) : (
             <View>
               {fix ? (
@@ -971,6 +1146,13 @@ export default function App() {
             {selectedCell.band ? `${humanize(selectedCell.band)} confidence · ` : ''}
             looking for {manifest.scored_areas.target}
           </Text>
+          <TouchableOpacity
+            style={styles.directionsBtn}
+            onPress={() => openDirections(selectedCell.lat, selectedCell.lon)}
+            accessibilityLabel="Driving directions to this spot"
+          >
+            <Text style={styles.directionsBtnText}>🧭  Directions (Apple Maps)</Text>
+          </TouchableOpacity>
           {(selectedCell.factors ?? []).length > 0 && (
             <Text style={styles.rationaleSub}>Each factor adds points, then access gates multiply.</Text>
           )}
@@ -1009,6 +1191,84 @@ export default function App() {
                 ))}
                 <Text style={styles.landDisc}>{LAND_STATUS_DISCLAIMER}</Text>
               </View>
+            )}
+          </ScrollView>
+        </View>
+      )}
+
+      {/* Planned-spot detail card: the FULL saved info that came with the spot —
+          score, factor breakdown, land-status gates — plus Directions + Navigate.
+          Opened by tapping the pin on the map or the spot in the Trip list. */}
+      {selectedWaypoint && (
+        <View style={styles.panel}>
+          <View style={styles.panelHeader}>
+            <Text style={styles.panelTitle} numberOfLines={1}>
+              {selectedWaypoint.title || selectedWaypoint.kind || 'Planned spot'}
+            </Text>
+            <TouchableOpacity onPress={() => setSelectedWaypoint(null)} accessibilityLabel="Close">
+              <Text style={styles.panelClose}>✕</Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.panelMeta}>
+            {selectedWaypoint.details?.score != null ? `Score ${Math.round(selectedWaypoint.details.score)} · ` : ''}
+            {selectedWaypoint.details?.band ? `${humanize(selectedWaypoint.details.band)} confidence · ` : ''}
+            {selectedWaypoint.lat.toFixed(5)}, {selectedWaypoint.lon.toFixed(5)}
+          </Text>
+          {!!selectedWaypoint.note && <Text style={styles.panelBody}>{selectedWaypoint.note}</Text>}
+          <View style={styles.wpCardActions}>
+            <TouchableOpacity
+              style={styles.directionsBtn}
+              onPress={() => openDirections(selectedWaypoint.lat, selectedWaypoint.lon)}
+              accessibilityLabel="Driving directions to this spot"
+            >
+              <Text style={styles.directionsBtnText}>🧭  Directions</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.wpCardGo}
+              onPress={() => {
+                navigateTo(selectedWaypoint)
+                setSelectedWaypoint(null)
+              }}
+              accessibilityLabel="Navigate to this spot"
+            >
+              <Text style={styles.wpCardGoText}>↗ Navigate</Text>
+            </TouchableOpacity>
+          </View>
+          {(selectedWaypoint.details?.factors ?? []).length > 0 && (
+            <Text style={styles.rationaleSub}>Each factor adds points, then access gates multiply.</Text>
+          )}
+          <ScrollView style={styles.wpList}>
+            {[...(selectedWaypoint.details?.factors ?? [])]
+              .sort((a, b) => b.contribution - a.contribution)
+              .map((f) => {
+                const pts = Math.round(f.contribution * 100)
+                return (
+                  <View key={f.name} style={styles.factorRow}>
+                    <View style={styles.factorHead}>
+                      <Text style={styles.factorLabel}>{f.label}</Text>
+                      <Text style={styles.factorPts}>{pts > 0 ? `+${pts}` : '0'} pts</Text>
+                    </View>
+                    <Text style={styles.factorRaw}>{f.raw}</Text>
+                  </View>
+                )
+              })}
+            {(selectedWaypoint.details?.gates ?? []).length > 0 && (
+              <View>
+                <Text style={styles.gateHeading}>Land status</Text>
+                {(selectedWaypoint.details?.gates ?? []).map((g) => (
+                  <View key={g.name} style={styles.factorRow}>
+                    <View style={styles.factorHead}>
+                      <Text style={styles.factorLabel}>{humanize(g.name)}</Text>
+                      <Text style={[styles.gateState, g.gate >= 1 ? styles.gateOpen : styles.gateRestricted]}>×{g.gate}</Text>
+                    </View>
+                    <Text style={styles.factorRaw}>{g.raw}</Text>
+                  </View>
+                ))}
+                <Text style={styles.landDisc}>{LAND_STATUS_DISCLAIMER}</Text>
+              </View>
+            )}
+            {(selectedWaypoint.details?.factors ?? []).length === 0 && (
+              <Text style={styles.panelBody}>No saved scoring breakdown for this spot.</Text>
             )}
           </ScrollView>
         </View>
@@ -1170,13 +1430,15 @@ const styles = StyleSheet.create({
   // tabular-nums keeps the digits from jittering as the readout updates
   navHudReadout: { color: '#6ee7b7', fontSize: 16, fontWeight: '700', marginTop: 2, fontVariant: ['tabular-nums'] },
   navHudClose: { color: '#cbd5e1', fontSize: 18, fontWeight: '600' },
+  navHudGo: { paddingHorizontal: 6, paddingVertical: 2 },
+  navHudGoText: { fontSize: 18 },
 
   panel: {
     position: 'absolute',
     left: 16,
     right: 16,
     bottom: 116,
-    maxHeight: 360,
+    maxHeight: 420,
     backgroundColor: 'rgba(14,23,38,0.96)',
     borderRadius: 16,
     padding: 18,
@@ -1188,6 +1450,7 @@ const styles = StyleSheet.create({
   panelMeta: { color: '#94a3b8', fontSize: 12, marginBottom: 10, lineHeight: 17 },
 
   wpList: { maxHeight: 250 },
+  layersList: { maxHeight: 320 },
   wpRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1209,6 +1472,32 @@ const styles = StyleSheet.create({
   wpGoActive: { backgroundColor: '#34d399', borderColor: '#34d399' },
   wpGoText: { color: '#34d399', fontSize: 13, fontWeight: '700' },
   wpGoTextActive: { color: '#06281e' },
+  wpDirections: { paddingHorizontal: 8, paddingVertical: 4 },
+  wpDirectionsText: { fontSize: 16 },
+  // "Directions" button on the rationale card (drive to a tapped score cell)
+  directionsBtn: {
+    alignSelf: 'flex-start',
+    marginBottom: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#60a5fa',
+    backgroundColor: 'rgba(96,165,250,0.12)',
+  },
+  directionsBtnText: { color: '#93c5fd', fontSize: 14, fontWeight: '700' },
+  wpCardActions: { flexDirection: 'row', gap: 10, flexWrap: 'wrap' },
+  wpCardGo: {
+    alignSelf: 'flex-start',
+    marginBottom: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#34d399',
+    backgroundColor: 'rgba(52,211,153,0.12)',
+  },
+  wpCardGoText: { color: '#34d399', fontSize: 14, fontWeight: '700' },
 
   toggleRow: {
     flexDirection: 'row',
@@ -1234,6 +1523,10 @@ const styles = StyleSheet.create({
   gateOpen: { color: '#34d399' },
   gateRestricted: { color: '#f87171' },
   landDisc: { color: '#94a3b8', fontSize: 11, fontStyle: 'italic', lineHeight: 15, marginTop: 10 },
+  landLegend: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 8, paddingLeft: 4 },
+  landLegendRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  landSwatch: { width: 12, height: 12, borderRadius: 3 },
+  landLegendText: { color: '#cbd5e1', fontSize: 12 },
 
   formLabel: { color: '#cbd5e1', fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 14, marginBottom: 8 },
   kindRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
@@ -1281,6 +1574,7 @@ const styles = StyleSheet.create({
   },
   tripActiveTag: { color: '#34d399', fontSize: 12, fontWeight: '700' },
   tripSwitchTag: { color: '#cbd5e1', fontSize: 12, fontWeight: '600' },
+  tripDelete: { paddingHorizontal: 6, paddingVertical: 4 },
   findDelete: { paddingHorizontal: 8, paddingVertical: 4 },
   findDeleteText: { color: '#f87171', fontSize: 17, fontWeight: '600' },
   findThumb: { width: 44, height: 44, borderRadius: 6, backgroundColor: 'rgba(148,163,184,0.15)' },
