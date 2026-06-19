@@ -16,7 +16,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from starlette.background import BackgroundTask
@@ -48,6 +48,15 @@ class Waypoint(BaseModel):
     kind: str = "manual"  # 'engine' | 'mine' | 'manual'
     details: dict = Field(default_factory=dict)
     note: str = ""
+
+    @field_validator("details", mode="before")
+    @classmethod
+    def _details_never_null(cls, v: object) -> object:
+        # A stored waypoint can carry an explicit null `details` (e.g. a marker pin
+        # saved with details=None). Coerce it to {} BEFORE the dict type-check so a
+        # single null can't fail TripOut validation and 500 the whole trip GET. The
+        # frontend's contract is that `details` is always an object.
+        return {} if v is None else v
 
 
 class TripCreate(BaseModel):
