@@ -43,8 +43,9 @@ import {
   type TripSummary,
   type Waypoint,
 } from './src/bundle'
-import { appendFind, deleteFind, deleteFindsForTrip, findsFC, loadFinds, photoUri, savePhoto, type Find } from './src/finds'
+import { appendFind, buildFindsBundle, deleteFind, deleteFindsForTrip, findsFC, loadFinds, photoUri, savePhoto, type Find } from './src/finds'
 import { bearingDegrees, cardinal16, distanceMeters, formatDistanceImperial } from './src/geo'
+import * as Sharing from 'expo-sharing'
 import { ensureBasemapDirs, topoStyleIfAvailable } from './src/basemap'
 
 // Colorado I-70 corridor — a sane pre-trip fallback if we somehow render the map
@@ -179,6 +180,7 @@ export default function App() {
   const [findKind, setFindKind] = useState<string>(FIND_KINDS[0])
   const [findNote, setFindNote] = useState('')
   const [savingFind, setSavingFind] = useState(false)
+  const [sendingFinds, setSendingFinds] = useState(false)
   // Temp URI of a photo picked for the in-progress find (copied to permanent
   // storage only on Save), and the URI currently shown in the full-screen viewer.
   const [pendingPhotoUri, setPendingPhotoUri] = useState<string | null>(null)
@@ -485,6 +487,35 @@ export default function App() {
         },
       ],
     )
+  }
+
+  // Bundle this trip's finds (notes + GPS + photos) into a .pcfinds file and open
+  // the iOS share sheet so they can be AirDropped back to the desktop. This is the
+  // return leg of the trip round-trip: the desktop sends spots out, the phone sends
+  // discoveries home.
+  async function sendFinds(): Promise<void> {
+    if (!trip || finds.length === 0 || sendingFinds) return
+    setSendingFinds(true)
+    try {
+      const uri = await buildFindsBundle(trip.manifest.trip.id, trip.manifest.trip.name)
+      if (!uri) {
+        Alert.alert('No finds to send', 'Log a find first, then send it to the desktop.')
+        return
+      }
+      if (!(await Sharing.isAvailableAsync())) {
+        Alert.alert('Sharing unavailable', 'This device can’t open the share sheet.')
+        return
+      }
+      await Sharing.shareAsync(uri, {
+        mimeType: 'application/zip',
+        dialogTitle: 'Send finds to desktop',
+        UTI: 'public.zip-archive',
+      })
+    } catch (e) {
+      Alert.alert('Couldn’t send finds', String(e))
+    } finally {
+      setSendingFinds(false)
+    }
   }
 
   // Launch the camera or library, then hold the chosen photo's temp URI for the
@@ -1022,6 +1053,17 @@ export default function App() {
                 {finds.length === 0 && (
                   <Text style={styles.panelBody}>No finds yet. Tap ＋ to log one where you stand.</Text>
                 )}
+                {finds.length > 0 && (
+                  <TouchableOpacity
+                    style={[styles.sendFindsBtn, sendingFinds && styles.sendFindsBtnBusy]}
+                    onPress={sendFinds}
+                    disabled={sendingFinds}
+                  >
+                    <Text style={styles.sendFindsText}>
+                      {sendingFinds ? 'Preparing…' : `📤 Send ${finds.length} find${finds.length === 1 ? '' : 's'} to desktop`}
+                    </Text>
+                  </TouchableOpacity>
+                )}
                 {/* Newest first — the find you just logged is the one you want. */}
                 {[...finds].reverse().map((f) => {
                   const thumb = f.photo ? photoUri(manifest.trip.id, f.photo) : null
@@ -1448,6 +1490,20 @@ const styles = StyleSheet.create({
   panelClose: { color: '#cbd5e1', fontSize: 18, paddingHorizontal: 6 },
   panelBody: { color: '#cbd5e1', fontSize: 14, lineHeight: 20 },
   panelMeta: { color: '#94a3b8', fontSize: 12, marginBottom: 10, lineHeight: 17 },
+
+  sendFindsBtn: {
+    backgroundColor: 'rgba(52, 211, 153, 0.16)',
+    borderColor: FIND_COLOR,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+    marginTop: 8,
+    marginBottom: 4,
+    alignItems: 'center',
+  },
+  sendFindsBtnBusy: { opacity: 0.6 },
+  sendFindsText: { color: FIND_COLOR, fontWeight: '700', fontSize: 14 },
 
   wpList: { maxHeight: 250 },
   layersList: { maxHeight: 320 },

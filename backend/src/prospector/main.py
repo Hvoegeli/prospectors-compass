@@ -2,8 +2,10 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from prospector.api import engine, land_status, layers, trips
+from prospector.api.trips import FIND_PHOTOS_DIR
 from prospector.config import settings
 from prospector.db.base import engine as db_engine
 from prospector.db.models import Trip
@@ -40,6 +42,11 @@ app.include_router(layers.router)
 app.include_router(engine.router)
 app.include_router(trips.router)
 app.include_router(land_status.router)
+
+# Serve imported field-find photos read-only (written by POST /trips/import-finds).
+# The directory must exist before StaticFiles mounts it.
+FIND_PHOTOS_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/find-photos", StaticFiles(directory=str(FIND_PHOTOS_DIR)), name="find-photos")
 
 
 @app.get("/health")

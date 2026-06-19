@@ -8,6 +8,7 @@
 // local: no network, works with zero signal.
 
 import { Directory, File, Paths } from 'expo-file-system'
+import { strToU8, zipSync } from 'fflate'
 
 export type Find = {
   id: number
@@ -153,6 +154,53 @@ export function deleteFindsForTrip(tripId: number): void {
   } catch {
     // best-effort cleanup
   }
+}
+
+// The `.pcfinds` bundle format the desktop imports — the mirror of the trip
+// `.pcbundle`: a zip holding finds.json (manifest) + photos/<filename>. Kept in
+// lockstep with the backend importer (FINDS_BUNDLE_FORMAT in api/trips.py).
+const FINDS_BUNDLE_FORMAT = 'prospectors-compass.finds-bundle'
+
+/** Build a `.pcfinds` bundle for one trip's finds (notes + GPS + photos) and write
+ *  it to the cache, returning the file URI to hand to the share sheet (AirDrop).
+ *  Returns null if the trip has no finds yet. Photos that can't be read are skipped
+ *  (the find still travels, just without its picture). */
+export async function buildFindsBundle(tripId: number, tripName: string): Promise<string | null> {
+  const finds = await loadFinds(tripId)
+  if (finds.length === 0) return null
+
+  const files: Record<string, Uint8Array> = {}
+  for (const f of finds) {
+    if (!f.photo) continue
+    try {
+      const pf = new File(photosDir(tripId), f.photo)
+      if (pf.exists) files[`photos/${f.photo}`] = pf.bytesSync()
+    } catch {
+      // unreadable photo — keep the find, drop the picture
+    }
+  }
+  const manifest = {
+    format: FINDS_BUNDLE_FORMAT,
+    version: 1,
+    exported_at: new Date().toISOString(),
+    trip: { id: tripId, name: tripName },
+    finds: finds.map((f) => ({
+      id: f.id,
+      lon: f.lon,
+      lat: f.lat,
+      kind: f.kind,
+      note: f.note,
+      created_at: f.created_at,
+      photo: f.photo ?? null,
+    })),
+  }
+  files['finds.json'] = strToU8(JSON.stringify(manifest))
+
+  const slug = (tripName || 'trip').replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || `trip-${tripId}`
+  const out = new File(Paths.cache, `${slug}.pcfinds`)
+  out.create({ overwrite: true })
+  out.write(zipSync(files))
+  return out.uri
 }
 
 /** Finds → a Point FeatureCollection for the map markers. */

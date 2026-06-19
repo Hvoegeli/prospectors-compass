@@ -751,6 +751,24 @@ function recommendSectionHtml(props: Record<string, unknown>): string {
   return recommendSection(String(props.target_label), Number(props.score), String(props.band), factors, gates)
 }
 
+// Popup body for a field find imported from the phone: what was found, when, and
+// the specimen photo if one rode along. Photo paths are server-relative, so prefix
+// the API origin (the frontend runs on a different port).
+function findSection(wp: Waypoint): string {
+  const kind = String(wp.details.find_kind ?? 'sample')
+  const whenRaw = wp.details.created_at ? String(wp.details.created_at) : ''
+  const when = whenRaw ? new Date(whenRaw).toLocaleString() : ''
+  const photo = wp.details.photo ? String(wp.details.photo) : ''
+  const img = photo
+    ? `<img class="find-photo" src="${esc(API_BASE + photo)}" alt="Specimen photo for this find" />`
+    : ''
+  return `<div class="popup-sec find-sec">
+    <h4>🟢 Find: ${esc(kind)}</h4>
+    ${when ? `<div class="rec-sub">Logged ${esc(when)}</div>` : ''}
+    ${img}
+  </div>`
+}
+
 // Magma-legend dot per band, matching the heat ramp (high = bright/pale).
 const BAND_DOT: Record<string, string> = { high: '#fcfdbf', moderate: '#de4968', low: '#3b0f70' }
 
@@ -784,7 +802,7 @@ type Waypoint = {
   lon: number
   lat: number
   title: string
-  kind: 'engine' | 'mine' | 'manual'
+  kind: 'engine' | 'mine' | 'manual' | 'find'
   details: Record<string, unknown>
   note: string
 }
@@ -823,6 +841,17 @@ async function apiUpdateTrip(id: number, patch: { name?: string; waypoints?: Way
 async function apiDeleteTrip(id: number): Promise<void> {
   const r = await fetch(`${TRIPS_URL}/${id}`, { method: 'DELETE' })
   if (!r.ok) throw new Error(`${r.status}`)
+}
+// Import a phone-exported `.pcfinds` bundle (raw zip body). Returns the updated
+// (or newly created) home trip with the finds merged in as `kind: 'find'` pins.
+async function apiImportFinds(file: File): Promise<TripFull> {
+  const r = await fetch(`${TRIPS_URL}/import-finds`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/zip' },
+    body: file,
+  })
+  if (!r.ok) throw new Error(`${r.status}`)
+  return r.json()
 }
 
 // Stable id for a new waypoint (kept across the future AirDrop round-trip).
@@ -1204,7 +1233,9 @@ export default function MapView() {
   const [activeTripId, setActiveTripId] = useState<number | null>(null)
   const [activeTrip, setActiveTrip] = useState<TripFull | null>(null)
   const [exporting, setExporting] = useState(false)
+  const [importing, setImporting] = useState(false)
   const [renaming, setRenaming] = useState(false)
+  const findsInputRef = useRef<HTMLInputElement>(null)
   const tripsRef = useRef<TripSummary[]>([])
   const activeTripIdRef = useRef<number | null>(null)
   const activeTripRef = useRef<TripFull | null>(null)
@@ -1415,8 +1446,15 @@ export default function MapView() {
           type: 'circle',
           paint: {
             'circle-radius': 6,
-            'circle-color': ['case', ['get', 'hasNote'], '#fbbf24', '#ffffff'],
-            'circle-stroke-color': '#db2777',
+            // Field finds (imported from the phone) = emerald, matching the phone's
+            // finds color; planned spots stay white, amber if they carry a note.
+            'circle-color': [
+              'case',
+              ['==', ['get', 'kind'], 'find'], '#10b981',
+              ['get', 'hasNote'], '#fbbf24',
+              '#ffffff',
+            ],
+            'circle-stroke-color': ['case', ['==', ['get', 'kind'], 'find'], '#047857', '#db2777'],
             'circle-stroke-width': 3,
           },
         })
@@ -1800,6 +1838,24 @@ export default function MapView() {
     }
   }
 
+  // Import a phone-exported .pcfinds bundle (chosen via the hidden file input):
+  // the finds merge into their home trip on the backend, then we select that trip
+  // so its new emerald find pins render immediately. The trip the finds belong to
+  // may differ from the one open now (or have been recreated), so we honor the id
+  // the backend returns rather than assuming the current selection.
+  async function importFindsFile(file: File): Promise<void> {
+    setImporting(true)
+    try {
+      const trip = await apiImportFinds(file)
+      await refreshTrips()
+      await selectTrip(trip.id)
+    } catch (err) {
+      alert(`Couldn’t import finds: ${String(err)}`)
+    } finally {
+      setImporting(false)
+    }
+  }
+
   // Paint the active trip's waypoints as pins (amber fill = has a note).
   function renderWaypointPins(trip: TripFull | null): void {
     const map = mapRef.current
@@ -1810,7 +1866,7 @@ export default function MapView() {
       features: (trip?.waypoints ?? []).map((w) => ({
         type: 'Feature',
         geometry: { type: 'Point', coordinates: [w.lon, w.lat] },
-        properties: { wpId: w.id, hasNote: Boolean(w.note && w.note.trim()) },
+        properties: { wpId: w.id, kind: w.kind, hasNote: Boolean(w.note && w.note.trim()) },
       })),
     })
   }
@@ -1828,7 +1884,9 @@ export default function MapView() {
             wp.title, Number(wp.details.score), String(wp.details.band),
             (wp.details.factors as ScoreFactor[]) ?? [], (wp.details.gates as ScoreGate[]) ?? [],
           )
-        : `<div class="popup-sec"><h4>${esc(wp.title)}</h4><table>${featureRows(wp.details)}</table></div>`
+        : wp.kind === 'find'
+          ? findSection(wp)
+          : `<div class="popup-sec"><h4>${esc(wp.title)}</h4><table>${featureRows(wp.details)}</table></div>`
     const noteSec = `<div class="popup-sec wp-notesec">
       <div class="rec-sub">📝 Your notes</div>
       <textarea class="wp-note" rows="3" placeholder="Add a note…">${esc(wp.note ?? '')}</textarea>
@@ -2203,6 +2261,25 @@ export default function MapView() {
                     >
                       {exporting ? '⏳ Building…' : '📲 Export to phone'}
                     </button>
+                    <button
+                      className="trip-import"
+                      disabled={importing}
+                      title="Import a .pcfinds file AirDropped from your phone"
+                      onClick={() => findsInputRef.current?.click()}
+                    >
+                      {importing ? '⏳ Importing…' : '📥 Import finds'}
+                    </button>
+                    <input
+                      ref={findsInputRef}
+                      type="file"
+                      accept=".pcfinds,application/zip"
+                      style={{ display: 'none' }}
+                      onChange={(e) => {
+                        const f = e.target.files?.[0]
+                        e.target.value = '' // let the same file be re-picked later
+                        if (f) void importFindsFile(f)
+                      }}
+                    />
                   </div>
                 </>
               )}
