@@ -44,6 +44,7 @@ import {
   type Waypoint,
 } from './src/bundle'
 import { appendFind, buildFindsBundle, deleteFind, deleteFindsForTrip, findsFC, loadFinds, photoUri, savePhoto, type Find } from './src/finds'
+import { addPin, deletePin, EMPTY_ANNOTATIONS, loadAnnotations, pinsFC, setNote, type Annotations, type DroppedPin } from './src/annotations'
 import { bearingDegrees, cardinal16, distanceMeters, formatDistanceImperial } from './src/geo'
 import * as Sharing from 'expo-sharing'
 import { ensureBasemapDirs, topoStyleIfAvailable } from './src/basemap'
@@ -163,6 +164,8 @@ type LayerVis = { basemap: boolean; scored: boolean; waypoints: boolean; finds: 
 const FIND_KINDS = ['Gold', 'Float', 'Outcrop', 'Other'] as const
 // Emerald find markers — deliberately distinct from the magenta planned waypoints.
 const FIND_COLOR = '#34d399'
+// Violet markers for user-dropped pins — distinct from both of the above.
+const DROPPED_PIN_COLOR = '#a855f7'
 
 export default function App() {
   const [status, setStatus] = useState<'loading' | 'granted' | 'denied'>('loading')
@@ -177,6 +180,11 @@ export default function App() {
   // Field finds logged on this phone (append-only, persisted locally per trip),
   // plus the in-progress log-a-find form state.
   const [finds, setFinds] = useState<Find[]>([])
+  // Field annotations layered on the read-only bundle: notes on any pin + the
+  // user's long-press-dropped pins (persisted locally per trip).
+  const [annotations, setAnnotations] = useState<Annotations>(EMPTY_ANNOTATIONS)
+  // Editable note text for the spot card's note field, seeded when a pin opens.
+  const [noteDraft, setNoteDraft] = useState('')
   const [findKind, setFindKind] = useState<string>(FIND_KINDS[0])
   const [findNote, setFindNote] = useState('')
   const [savingFind, setSavingFind] = useState(false)
@@ -345,12 +353,38 @@ export default function App() {
     }
   }, [trip])
 
+  // Load this trip's field annotations (pin notes + dropped pins) alongside finds.
+  useEffect(() => {
+    if (!trip) return
+    let active = true
+    loadAnnotations(trip.manifest.trip.id)
+      .then((a) => {
+        if (active) setAnnotations(a)
+      })
+      .catch(() => {
+        // None yet (or unreadable) — leave empty.
+      })
+    return () => {
+      active = false
+    }
+  }, [trip])
+
   // Derive the map overlays from the manifest once (not on every render).
   const cellsFC = useMemo(() => (trip ? scoredCellsFC(trip.manifest) : null), [trip])
   const contoursFCData = useMemo(() => (trip ? contoursFC(trip.manifest) : null), [trip])
   const landFCData = useMemo(() => (trip ? landFC(trip.manifest) : null), [trip])
   const wpsFC = useMemo(() => (trip ? waypointsFC(trip.manifest) : null), [trip])
   const findsFCData = useMemo(() => findsFC(finds), [finds])
+  const droppedPinsFC = useMemo(() => pinsFC(annotations.pins), [annotations.pins])
+
+  // Seed the spot card's note field whenever a pin opens: show the locally-saved
+  // note if there is one, else the note that rode in on the bundle.
+  useEffect(() => {
+    if (!selectedWaypoint) return
+    setNoteDraft(annotations.notes[String(selectedWaypoint.id)] ?? selectedWaypoint.note ?? '')
+    // Re-seed only when the selected pin changes, not on every keystroke/annotation edit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedWaypoint])
 
   // The full tapped cell (with its factors/gates), looked up by index in memory.
   const selectedCell = useMemo<ScoredCell | null>(() => {
@@ -578,6 +612,19 @@ export default function App() {
           return
         }
       }
+      // A dropped pin (user-placed): open it in the same card so it can be noted
+      // or removed. Match the tapped feature id back to the stored pin.
+      const pinFeats = await mapRef.current.queryRenderedFeatures(pt, { layers: ['dropped-circles'] })
+      const pinId = pinFeats?.[0]?.properties?.id
+      if (pinId != null) {
+        const pin = annotations.pins.find((p) => String(p.id) === String(pinId))
+        if (pin) {
+          setSelectedWaypoint({ id: pin.id, lon: pin.lon, lat: pin.lat, title: pin.title, kind: 'manual', details: null, note: '' })
+          setSelectedIdx(null)
+          setPanel(null)
+          return
+        }
+      }
       const feats = await mapRef.current.queryRenderedFeatures(pt, { layers: ['scored-fill'] })
       const raw = feats?.[0]?.properties?.idx
       const idx = typeof raw === 'string' ? Number.parseInt(raw, 10) : raw
@@ -593,6 +640,52 @@ export default function App() {
     } catch {
       // query failed (map not ready) — ignore
     }
+  }
+
+  // Long-press the map to drop a pin at that exact spot, then open its card so it
+  // can be named/noted right away. Geographic coords come straight off the event.
+  function onMapLongPress(e: { nativeEvent?: { lngLat?: [number, number] } }): void {
+    const ll = e.nativeEvent?.lngLat
+    if (!ll || !trip) return
+    const [lon, lat] = ll
+    const pin: DroppedPin = { id: Date.now(), lon, lat, title: 'Dropped pin', created_at: new Date().toISOString() }
+    addPin(trip.manifest.trip.id, pin)
+      .then(setAnnotations)
+      .catch(() => Alert.alert('Couldn’t drop the pin', 'It could not be saved. Try again.'))
+    setSelectedWaypoint({ id: pin.id, lon, lat, title: pin.title, kind: 'manual', details: null, note: '' })
+    setSelectedIdx(null)
+    setPanel(null)
+  }
+
+  // Save the spot card's note onto the selected pin (planned or dropped). Blank
+  // clears it. Works for any pin because notes are keyed by waypoint id.
+  async function saveWaypointNote(): Promise<void> {
+    if (!trip || !selectedWaypoint) return
+    try {
+      setAnnotations(await setNote(trip.manifest.trip.id, String(selectedWaypoint.id), noteDraft))
+      Keyboard.dismiss()
+    } catch {
+      Alert.alert('Couldn’t save the note', 'It could not be written. Try again.')
+    }
+  }
+
+  // Delete a dropped pin (and its note), behind a confirm. Only offered for the
+  // user's own dropped pins — planned spots come from the read-only bundle.
+  function confirmDeleteDroppedPin(): void {
+    if (!trip || !selectedWaypoint) return
+    const tripId = trip.manifest.trip.id
+    const pinId = Number(selectedWaypoint.id)
+    Alert.alert('Delete pin?', 'Removes this dropped pin and its note. This can’t be undone.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          setAnnotations(await deletePin(tripId, pinId))
+          setSelectedWaypoint(null)
+        },
+      },
+    ])
   }
 
   // Fly the camera to a point and close the panel. Shared by the waypoint and
@@ -745,7 +838,7 @@ export default function App() {
           default ornaments (they sat UNDER the buttons), and the basemap is
           self-hosted public-domain USGS data, so no third-party attribution is
           owed. Data provenance lives in docs/DATA_SOURCES.md. */}
-      <Map ref={mapRef} style={styles.map} mapStyle={topoStyle ?? OFFLINE_STYLE} logo={false} attribution={false} onPress={onMapPress}>
+      <Map ref={mapRef} style={styles.map} mapStyle={topoStyle ?? OFFLINE_STYLE} logo={false} attribution={false} onPress={onMapPress} onLongPress={onMapLongPress}>
         <Camera ref={cameraRef} initialViewState={{ center: footprintCenter, zoom: 11.5 }} />
 
         {/* Offline shaded-relief basemap, read straight from the bundled MBTiles.
@@ -882,6 +975,22 @@ export default function App() {
               'circle-radius': 7,
               'circle-color': FIND_COLOR,
               'circle-stroke-color': '#06281e',
+              'circle-stroke-width': 2,
+            }}
+          />
+        </GeoJSONSource>
+
+        {/* User-dropped pins (long-press) — violet, distinct from magenta planned
+            spots and emerald finds. Shown with the "Saved spots" toggle. */}
+        <GeoJSONSource id="dropped" data={droppedPinsFC}>
+          <Layer
+            id="dropped-circles"
+            type="circle"
+            layout={{ visibility: vis.waypoints ? 'visible' : 'none' }}
+            paint={{
+              'circle-radius': 7,
+              'circle-color': DROPPED_PIN_COLOR,
+              'circle-stroke-color': '#ffffff',
               'circle-stroke-width': 2,
             }}
           />
@@ -1242,7 +1351,7 @@ export default function App() {
           score, factor breakdown, land-status gates — plus Directions + Navigate.
           Opened by tapping the pin on the map or the spot in the Trip list. */}
       {selectedWaypoint && (
-        <View style={styles.panel}>
+        <View style={[styles.panel, kbHeight > 0 && { bottom: 116 + kbHeight }]}>
           <View style={styles.panelHeader}>
             <Text style={styles.panelTitle} numberOfLines={1}>
               {selectedWaypoint.title || selectedWaypoint.kind || 'Planned spot'}
@@ -1256,7 +1365,18 @@ export default function App() {
             {selectedWaypoint.details?.band ? `${humanize(selectedWaypoint.details.band)} confidence · ` : ''}
             {selectedWaypoint.lat.toFixed(5)}, {selectedWaypoint.lon.toFixed(5)}
           </Text>
-          {!!selectedWaypoint.note && <Text style={styles.panelBody}>{selectedWaypoint.note}</Text>}
+          {/* Editable note — works on any pin (planned or dropped). Blank clears it. */}
+          <TextInput
+            style={styles.noteInput}
+            value={noteDraft}
+            onChangeText={setNoteDraft}
+            placeholder="Add a note to this spot…"
+            placeholderTextColor="#64748b"
+            multiline
+          />
+          <TouchableOpacity style={styles.wpNoteSave} onPress={() => void saveWaypointNote()} accessibilityLabel="Save note">
+            <Text style={styles.wpNoteSaveText}>Save note</Text>
+          </TouchableOpacity>
           <View style={styles.wpCardActions}>
             <TouchableOpacity
               style={styles.directionsBtn}
@@ -1275,6 +1395,15 @@ export default function App() {
             >
               <Text style={styles.wpCardGoText}>↗ Navigate</Text>
             </TouchableOpacity>
+            {annotations.pins.some((p) => p.id === selectedWaypoint.id) && (
+              <TouchableOpacity
+                style={styles.wpDeleteBtn}
+                onPress={confirmDeleteDroppedPin}
+                accessibilityLabel="Delete this dropped pin"
+              >
+                <Text style={styles.wpDeleteText}>🗑 Delete pin</Text>
+              </TouchableOpacity>
+            )}
           </View>
           {(selectedWaypoint.details?.factors ?? []).length > 0 && (
             <Text style={styles.rationaleSub}>Each factor adds points, then access gates multiply.</Text>
@@ -1554,6 +1683,19 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(52,211,153,0.12)',
   },
   wpCardGoText: { color: '#34d399', fontSize: 14, fontWeight: '700' },
+  wpNoteSave: { backgroundColor: '#34d399', borderRadius: 10, paddingVertical: 10, alignItems: 'center', marginTop: 8, marginBottom: 12 },
+  wpNoteSaveText: { color: '#06281e', fontSize: 14, fontWeight: '700' },
+  wpDeleteBtn: {
+    alignSelf: 'flex-start',
+    marginBottom: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#7f1d1d',
+    backgroundColor: 'rgba(127,29,29,0.25)',
+  },
+  wpDeleteText: { color: '#fca5a5', fontSize: 14, fontWeight: '700' },
 
   toggleRow: {
     flexDirection: 'row',

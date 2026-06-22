@@ -78,3 +78,6 @@ evals/_snapshots_cache/
 # === Local design / demo docs (never committed) ===
 mockups/
 DEMO-SCRIPT.md
+
+# graphify knowledge-graph output (generated, not source)
+graphify-out/
