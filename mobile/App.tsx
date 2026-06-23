@@ -47,7 +47,7 @@ import { appendFind, buildFindsBundle, deleteFind, deleteFindsForTrip, findsFC, 
 import { addPin, deletePin, EMPTY_ANNOTATIONS, loadAnnotations, pinsFC, setNote, type Annotations, type DroppedPin } from './src/annotations'
 import { bearingDegrees, cardinal16, distanceMeters, formatDistanceImperial } from './src/geo'
 import * as Sharing from 'expo-sharing'
-import { ensureBasemapDirs, topoStyleIfAvailable } from './src/basemap'
+import { ensureBasemapDirs, ensureFonts, topoStyleIfAvailable } from './src/basemap'
 
 // Colorado I-70 corridor — a sane pre-trip fallback if we somehow render the map
 // before a footprint is known (we normally gate on the trip loading first).
@@ -274,13 +274,21 @@ export default function App() {
   // device. Recomputed when the trip loads so the trip's shaded relief can be
   // layered UNDER the topo (terrain shows in the footprint; roads/labels on top).
   useEffect(() => {
+    let active = true
     ensureBasemapDirs()
     const bm = trip?.manifest.basemap
     const hill =
       trip?.basemapMbtilesUrl && bm
         ? { url: trip.basemapMbtilesUrl, tileSize: bm.tile_size, minzoom: bm.minzoom, maxzoom: bm.maxzoom }
         : null
-    setTopoStyle(topoStyleIfAvailable(hill))
+    // Restore the bundled glyph first (a no-op once present), THEN evaluate the
+    // topo style — so a reinstall that wiped Documents/fonts still gets labels.
+    ensureFonts().finally(() => {
+      if (active) setTopoStyle(topoStyleIfAvailable(hill))
+    })
+    return () => {
+      active = false
+    }
   }, [trip])
 
   // Request foreground location, then watch position. GPS works with no cell

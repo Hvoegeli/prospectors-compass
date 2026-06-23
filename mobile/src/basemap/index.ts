@@ -12,6 +12,7 @@
 // the same Documents/basemap/ path this module reads.
 
 import type { StyleSpecification } from '@maplibre/maplibre-react-native'
+import { Asset } from 'expo-asset'
 import { Directory, File, Paths } from 'expo-file-system'
 import { buildTopoStyle, type HillshadeLayer } from './topoStyle'
 
@@ -19,6 +20,14 @@ import { buildTopoStyle, type HillshadeLayer } from './topoStyle'
 // directory name (MapLibre requests glyphs by this exact fontstack string).
 const FONT_STACK = 'Noto Sans Regular'
 const VECTOR_NAME = 'colorado.mbtiles'
+const GLYPH_RANGE = '0-255.pbf'
+
+// The single glyph range the topo labels need (Latin, 0-255), bundled INSIDE the
+// app. The statewide vector base is too big to embed, but this ~74 KB file is not —
+// shipping it lets the labels survive even a clean delete-and-reinstall (which
+// wipes Documents/fonts), because ensureFonts restores it from the bundle.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const BUNDLED_GLYPH = require('../../assets/fonts/noto-sans-regular-0-255.pbf') as number
 
 function baseDir(): Directory {
   return new Directory(Paths.document, 'basemap')
@@ -40,12 +49,32 @@ export function ensureBasemapDirs(): void {
   }
 }
 
+/** Restore the bundled glyph into Documents/fonts/<stack>/<range> if it isn't
+ *  already there, so the topo labels survive a clean reinstall (the font ships
+ *  inside the app, not only as a sideloaded file). No-op once present. Best-effort:
+ *  on failure the map just falls back to the raster base. Returns when done so the
+ *  caller can (re)evaluate the topo style with the font guaranteed in place. */
+export async function ensureFonts(): Promise<void> {
+  try {
+    const stackDir = new Directory(fontsDir(), FONT_STACK)
+    const dest = new File(stackDir, GLYPH_RANGE)
+    if (dest.exists) return
+    const asset = Asset.fromModule(BUNDLED_GLYPH)
+    await asset.downloadAsync() // for an embedded asset this just resolves localUri
+    if (!asset.localUri) return
+    if (!stackDir.exists) stackDir.create({ intermediates: true, idempotent: true })
+    new File(asset.localUri).copy(dest)
+  } catch {
+    // best-effort restore; topo simply stays unavailable if it fails
+  }
+}
+
 /** The offline topo style IF the statewide vector base AND the glyph fonts are
  *  both present on the device; otherwise null (caller falls back to raster).
  *  Pass the trip's per-trip hillshade to render shaded relief under the topo. */
 export function topoStyleIfAvailable(hillshade?: HillshadeLayer | null): StyleSpecification | null {
   const vector = new File(baseDir(), VECTOR_NAME)
-  const glyphSample = new File(fontsDir(), `${FONT_STACK}/0-255.pbf`)
+  const glyphSample = new File(fontsDir(), `${FONT_STACK}/${GLYPH_RANGE}`)
   if (!vector.exists || !glyphSample.exists) return null
   // mbtiles:// wants a bare absolute path (strip file://); glyphs uses a file://
   // template MapLibre fills in per {fontstack}/{range}. fontsDir().uri ends in a

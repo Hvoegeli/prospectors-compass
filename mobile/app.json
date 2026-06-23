@@ -57,7 +57,12 @@
           "cameraPermission": "Prospector's Compass uses the camera to photograph the finds you log in the field."
         }
       ],
-      "expo-asset"
+      [
+        "expo-asset",
+        {
+          "assets": ["./assets/fonts/noto-sans-regular-0-255.pbf"]
+        }
+      ]
     ]
   }
 }

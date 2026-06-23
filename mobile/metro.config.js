@@ -6,5 +6,8 @@ const { getDefaultConfig } = require('expo/metro-config')
 
 const config = getDefaultConfig(__dirname)
 config.resolver.assetExts.push('pcbundle')
+// `.pbf` glyph fonts are bundled in the app (assets/fonts) so the topo labels can
+// be restored into Documents/fonts even after a clean reinstall — see ensureFonts.
+config.resolver.assetExts.push('pbf')
 
 module.exports = config
