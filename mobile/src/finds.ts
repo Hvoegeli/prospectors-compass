@@ -9,6 +9,7 @@
 
 import { Directory, File, Paths } from 'expo-file-system'
 import { strToU8, zipSync } from 'fflate'
+import { loadAnnotations } from './annotations'
 
 export type Find = {
   id: number
@@ -161,13 +162,16 @@ export function deleteFindsForTrip(tripId: number): void {
 // lockstep with the backend importer (FINDS_BUNDLE_FORMAT in api/trips.py).
 const FINDS_BUNDLE_FORMAT = 'prospectors-compass.finds-bundle'
 
-/** Build a `.pcfinds` bundle for one trip's finds (notes + GPS + photos) and write
- *  it to the cache, returning the file URI to hand to the share sheet (AirDrop).
- *  Returns null if the trip has no finds yet. Photos that can't be read are skipped
- *  (the find still travels, just without its picture). */
+/** Build a `.pcfinds` bundle for one trip's field data — finds (notes + GPS +
+ *  photos) AND annotations (pin notes + dropped pins) — and write it to the cache,
+ *  returning the file URI to hand to the share sheet (AirDrop). Returns null if
+ *  there is nothing to send (no finds, no notes, no dropped pins). Photos that
+ *  can't be read are skipped (the find still travels, just without its picture). */
 export async function buildFindsBundle(tripId: number, tripName: string): Promise<string | null> {
   const finds = await loadFinds(tripId)
-  if (finds.length === 0) return null
+  const annotations = await loadAnnotations(tripId)
+  const hasAnnotations = Object.keys(annotations.notes).length > 0 || annotations.pins.length > 0
+  if (finds.length === 0 && !hasAnnotations) return null
 
   const files: Record<string, Uint8Array> = {}
   for (const f of finds) {
@@ -181,7 +185,7 @@ export async function buildFindsBundle(tripId: number, tripName: string): Promis
   }
   const manifest = {
     format: FINDS_BUNDLE_FORMAT,
-    version: 1,
+    version: 2, // v2 adds `annotations`; the desktop importer handles v1 + v2
     exported_at: new Date().toISOString(),
     trip: { id: tripId, name: tripName },
     finds: finds.map((f) => ({
@@ -193,6 +197,7 @@ export async function buildFindsBundle(tripId: number, tripName: string): Promis
       created_at: f.created_at,
       photo: f.photo ?? null,
     })),
+    annotations: { notes: annotations.notes, pins: annotations.pins },
   }
   files['finds.json'] = strToU8(JSON.stringify(manifest))
 

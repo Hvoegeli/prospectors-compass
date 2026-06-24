@@ -22,6 +22,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 from starlette.background import BackgroundTask
 
 from prospector.db.base import SessionLocal
@@ -215,7 +216,54 @@ async def import_finds(request: Request, db: Session = Depends(get_db)) -> TripO
         })
         seen_ids.add(wp_id)
 
+    # Annotations (v2 bundles): notes the user added to pins, and pins they dropped.
+    # Unlike finds (append-only), these are EDITS, so they upsert — re-importing
+    # applies the latest. v1 bundles have no `annotations` key, so this is a no-op
+    # for them (backward compatible).
+    ann = manifest.get("annotations")
+    ann = ann if isinstance(ann, dict) else {}
+    ann_notes = ann.get("notes")
+    ann_notes = ann_notes if isinstance(ann_notes, dict) else {}
+    ann_pins = ann.get("pins")
+    ann_pins = ann_pins if isinstance(ann_pins, list) else []
+    wp_by_id = {w.get("id"): w for w in waypoints}
+
+    # Dropped pins -> manual waypoints, each carrying its own note (keyed by pin id).
+    for p in ann_pins:
+        if not isinstance(p, dict):
+            continue
+        pid = p.get("id")
+        if not isinstance(pid, int) or isinstance(pid, bool):
+            continue
+        lon, lat = p.get("lon"), p.get("lat")
+        if not isinstance(lon, (int, float)) or not isinstance(lat, (int, float)):
+            continue
+        wp_id = f"drop-{target_id}-{pid}"
+        raw_note = ann_notes.get(str(pid))
+        note = raw_note if isinstance(raw_note, str) else ""
+        title = p.get("title") if isinstance(p.get("title"), str) and p.get("title") else "Dropped pin"
+        existing = wp_by_id.get(wp_id)
+        if existing is not None:
+            existing.update({"lon": float(lon), "lat": float(lat), "title": title, "note": note})
+        else:
+            wp = {"id": wp_id, "lon": float(lon), "lat": float(lat),
+                  "title": title, "kind": "manual", "details": {}, "note": note}
+            waypoints.append(wp)
+            wp_by_id[wp_id] = wp
+
+    # Notes on planned pins: the key is the bundle waypoint's own id, so set the note
+    # on that waypoint. Dropped-pin note keys are numeric pin ids that match no
+    # waypoint id here (those notes were applied above), so they're skipped.
+    for wpid, text in ann_notes.items():
+        w = wp_by_id.get(wpid)
+        if w is not None:
+            w["note"] = text if isinstance(text, str) else ""
+
     trip.waypoints = waypoints  # reassign (not in-place) so SQLAlchemy sees the change
+    # Annotations upsert dicts in place; a shallow-copied list shares those dict refs
+    # with SQLAlchemy's committed snapshot, so without an explicit flag the no-append
+    # case (only edits) flushes nothing. Force the JSON column dirty.
+    flag_modified(trip, "waypoints")
     db.commit()
     db.refresh(trip)
     return _out(trip)

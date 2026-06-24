@@ -385,6 +385,22 @@ export default function App() {
   const findsFCData = useMemo(() => findsFC(finds), [finds])
   const droppedPinsFC = useMemo(() => pinsFC(annotations.pins), [annotations.pins])
 
+  // What's available to send back to the desktop: finds + dropped pins + notes on
+  // planned pins (notes keyed to a dropped pin's id are counted under that pin).
+  const pinCount = annotations.pins.length
+  const plannedNoteCount = useMemo(() => {
+    const droppedIds = new Set(annotations.pins.map((p) => String(p.id)))
+    return Object.keys(annotations.notes).filter((k) => !droppedIds.has(k)).length
+  }, [annotations.notes, annotations.pins])
+  const hasFieldData = finds.length > 0 || pinCount > 0 || plannedNoteCount > 0
+  const sendSummary = [
+    finds.length ? `${finds.length} find${finds.length === 1 ? '' : 's'}` : '',
+    pinCount ? `${pinCount} pin${pinCount === 1 ? '' : 's'}` : '',
+    plannedNoteCount ? `${plannedNoteCount} note${plannedNoteCount === 1 ? '' : 's'}` : '',
+  ]
+    .filter(Boolean)
+    .join(', ')
+
   // Seed the spot card's note field whenever a pin opens: show the locally-saved
   // note if there is one, else the note that rode in on the bundle.
   useEffect(() => {
@@ -550,7 +566,7 @@ export default function App() {
       }
       await Sharing.shareAsync(uri, {
         mimeType: 'application/zip',
-        dialogTitle: 'Send finds to desktop',
+        dialogTitle: 'Send field data to desktop',
         UTI: 'public.zip-archive',
       })
     } catch (e) {
@@ -1170,14 +1186,14 @@ export default function App() {
                 {finds.length === 0 && (
                   <Text style={styles.panelBody}>No finds yet. Tap ＋ to log one where you stand.</Text>
                 )}
-                {finds.length > 0 && (
+                {hasFieldData && (
                   <TouchableOpacity
                     style={[styles.sendFindsBtn, sendingFinds && styles.sendFindsBtnBusy]}
                     onPress={sendFinds}
                     disabled={sendingFinds}
                   >
                     <Text style={styles.sendFindsText}>
-                      {sendingFinds ? 'Preparing…' : `📤 Send ${finds.length} find${finds.length === 1 ? '' : 's'} to desktop`}
+                      {sendingFinds ? 'Preparing…' : `📤 Send to desktop (${sendSummary})`}
                     </Text>
                   </TouchableOpacity>
                 )}
