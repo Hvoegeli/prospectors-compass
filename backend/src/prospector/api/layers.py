@@ -31,6 +31,7 @@ LAYERS: dict[str, str] = {
     "forests": "admin_forests",
     "districts": "mining_districts",
     "potential": "mineral_potential",
+    "radiometric": "radiometric",
     "aml": "aml_hazards",
     "claims": "mining_claims",
     "streams": "streams",

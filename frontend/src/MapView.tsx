@@ -65,6 +65,7 @@ const LAYERS: LayerInfo[] = [
   { id: 'geology', label: 'Geologic map', group: 'access' },
   { id: 'ownership', label: 'Land ownership', group: 'land' },
   { id: 'potential', label: 'Mineral potential (CGS)', group: 'finds' },
+  { id: 'radiometric', label: 'Fertile granite (thorium)', group: 'finds' },
   { id: 'districts', label: 'Historic mining districts', group: 'finds' },
   { id: 'claims', label: 'Active mining claims (BLM)', group: 'land' },
   { id: 'contours', label: 'Contour lines (40 ft)', group: 'access' },
@@ -304,6 +305,29 @@ function layerSpec(id: string): LayerSpecification {
           'fill-outline-color': '#92400e',
         },
       }
+    case 'radiometric':
+      // Airborne equivalent-thorium as a soft heat field: cool (low Th) → red
+      // (high Th = fractionated, "fertile" granite that hosts gem pegmatites). A
+      // rock-favorability view, independent of known mines. ~1 km grid, so the
+      // circles are blurred and grow with zoom to read as a continuous surface.
+      return {
+        id,
+        source,
+        type: 'circle',
+        paint: {
+          'circle-radius': ['interpolate', ['linear'], ['zoom'], 7, 4, 10, 9, 12, 16],
+          'circle-color': [
+            'interpolate', ['linear'], ['coalesce', ['get', 'eth_ppm'], 0],
+            6, '#2c7bb6',
+            8, '#abd9e9',
+            9.5, '#ffffbf',
+            11, '#fdae61',
+            13, '#d7191c',
+          ],
+          'circle-opacity': 0.5,
+          'circle-blur': 0.6,
+        },
+      }
     case 'districts':
       return {
         id,
@@ -498,6 +522,10 @@ const PROP_LABELS: Record<string, string> = {
   corundum: 'Corundum Potential',
   rare_earth: 'Rare Earth Potential',
   fluorite: 'Fluorite Potential',
+  eth_ppm: 'Equiv. thorium (ppm)',
+  k_pct: 'Potassium (%)',
+  th_k: 'Th/K ratio',
+  exceed_prob: 'P(eTh > national median)',
   formation: 'Formation',
   quad: 'Quadrangle',
   serial_nr: 'Claim Serial #',
@@ -925,8 +953,8 @@ type Facets = { commodities: string[]; deposit_types: string[] }
 
 // Heavy layers load by viewport (bbox). MRDS skips bbox when commodity-filtered
 // (a filter is meant to find a target everywhere, not just on-screen).
-const BBOX_LAYERS = new Set(['mrds', 'usmin', 'potential', 'aml', 'claims', 'streams', 'contours'])
-const PAN_LAYERS = ['usmin', 'potential', 'aml', 'claims', 'streams', 'contours'] // mrds is handled separately
+const BBOX_LAYERS = new Set(['mrds', 'usmin', 'potential', 'radiometric', 'aml', 'claims', 'streams', 'contours'])
+const PAN_LAYERS = ['usmin', 'potential', 'radiometric', 'aml', 'claims', 'streams', 'contours'] // mrds is handled separately
 // Contours are dense (300k+ lines region-wide) and only legible zoomed in, so
 // they only render + fetch at/above this zoom (matches the layer's minzoom).
 const CONTOUR_MIN_ZOOM = 11
@@ -1511,7 +1539,7 @@ export default function MapView() {
         }
       }
       const order = [
-        'mrds', 'usmin', 'aml', 'districts', 'claims', 'potential',
+        'mrds', 'usmin', 'aml', 'districts', 'claims', 'potential', 'radiometric',
         'roads', 'trails', 'streams', 'geology', 'ownership', 'forests', 'counties',
       ]
       const picked = order
@@ -2400,6 +2428,14 @@ export default function MapView() {
             <span><i style={{ background: '#b45309' }} />High</span>
           </div>
         )}
+        {visible.radiometric && (
+          <div className="legend-row">
+            <b title="Airborne equivalent thorium — higher = more fractionated, pegmatite-favorable granite (rock, not mines)">Fertile granite</b>
+            <span><i style={{ background: '#abd9e9' }} />Low Th</span>
+            <span><i style={{ background: '#fdae61' }} />Mod</span>
+            <span><i style={{ background: '#d7191c' }} />High Th</span>
+          </div>
+        )}
         {visible.mrds && (
           <div className="legend-row">
             <b>Mines</b>
@@ -2503,6 +2539,7 @@ export default function MapView() {
             <h3>Access &amp; terrain</h3>
             <ul>
               <li><b>Geologic map</b> — bedrock colored by rock type.</li>
+              <li><b>Fertile granite (thorium)</b> — a heat map of airborne thorium: hotter = more fractionated, &ldquo;fertile&rdquo; granite, the rock most likely to host gem pegmatites &mdash; independent of any mine. A rock-favorability view (coarse, ~1&nbsp;km). Click a cell for its thorium value.</li>
               <li><b>County boundaries</b> — boundary context.</li>
               <li><b>Streams &amp; rivers</b> — <span className="k blue" />main perennial creeks, rivers &amp; streams (year-round water — what you need to pan or sluice). Placer gold follows water, so trace a creek downhill from a lode or district.</li>
               <li><b>Roads / trails</b> — public + USFS; primary roads are thicker.</li>
