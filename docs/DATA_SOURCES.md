@@ -212,14 +212,25 @@ ingestion proves worth the effort later.
   signal where present. See `docs/ENGINE_WEIGHTS.md` (radiometric_fertility) and the
   `ingest/radiometric.py` header.
 - **The downloaded file is kept as a reference for FUTURE, non-gem builds**
-  (`backend/data/raw/earthmri/`, git-ignored): (1) its **airborne magnetic** data —
-  unused by the app — is a strong structural layer for a future hi-res *lode* profile
-  over the Mineral Belt; (2) the 50 m K/eTh/Th-K is right for sharpened **metal**
-  targeting in the Alma/Breckenridge/Idaho Springs districts it actually covers;
-  (3) it is the worked test dataset for a `rasterio` raster→points→PostGIS pipeline
-  when a *correct* gem-area survey is found (Option B: a free hi-res radiometric flown
-  **south of 39°N over the Pikes Peak fringe**, if one exists — Earth MRI is flown
-  survey-by-survey and may not have covered it yet).
+  (`backend/data/raw/earthmri/`, git-ignored). The outer 4 GB ZIP also holds
+  **`magnetic_data.zip` (2 GB)** — airborne aeromagnetics the app has never used.
+  The survey footprint covers these app counties (the Colorado Mineral Belt metal
+  districts): **Gilpin, Clear Creek, Summit, Jefferson, Lake, northern Park** (plus
+  slivers of Eagle/Chaffee). Best future uses: (1) the **aeromagnetics** as a new
+  structural layer + factor for the `au_lode`/`silver` profiles over those exact
+  counties — magnetics maps buried intrusions/faults/alteration that channel veins,
+  which is what those profiles currently lack (validate against known lode sites, as
+  thorium was for gems); (2) the worked test dataset for a `rasterio` raster→points→
+  PostGIS pipeline when a *correct* gem-area radiometric is found (Option B: a free
+  hi-res survey flown **south of 39°N over the Pikes Peak fringe**, if one exists).
+- **Do NOT try to reuse the Earth MRI *radiometric* for the other (covered) counties.**
+  Evaluated 2026-06-24, rejected: the app's only radiometric consumer is the gem
+  `granite_fertility` factor (gem targets only), and those are *metal* counties where
+  it barely fires — and Earth MRI's thorium scale (median ~5.6 ppm) differs from
+  NURE's (~8.8), so two sources under the single `radiometric_fertility` ramp would
+  silently misread whichever the KNN lookup grabs. The magnetics build above is the
+  real way to use this survey for the metal-belt counties; the radiometric is not.
+  Decision 2026-06-24: **shelved as reference** (no build started).
 - **To ingest a raster (when Option B lands):** add `rasterio>=1.4,<1.4.4` to
   `pyproject.toml` and set `[tool.uv] no-build-package = ["rasterio"]` — the 1.4.3
   cp312/arm64 *wheel* bundles GDAL; newer releases lack that wheel and would
