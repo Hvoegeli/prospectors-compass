@@ -76,17 +76,17 @@ layer that doesn't exist for it.
 
 | Factor | Weight | What it measures |
 |---|---:|---|
-| Fertile granite (radiometric thorium) | **0.32** | equivalent thorium (eTh) — fractionated, gem-fertile granite |
-| CGS favorability rating | **0.23** | the CGS mineral-potential rating for this target |
-| Favorable host rock | **0.15** | SGMC generalized lithology (intrusive/metamorphic) |
-| Near a known mineral occurrence | **0.16** | distance to a non-placer MRDS site |
-| Near a mapped fault (structure) | **0.09** | distance to a CGS fault line |
-| Inside/near a mining district | **0.05** | inside, else distance to a district |
+| Fertile granite (radiometric thorium) | **0.37** | equivalent thorium (eTh) — fractionated, gem-fertile granite |
+| CGS favorability rating | **0.26** | the CGS mineral-potential rating for this target |
+| Favorable host rock | **0.17** | SGMC generalized lithology (intrusive/metamorphic) |
+| Near a known mineral occurrence | **0.11** | distance to a non-placer MRDS site |
+| Near a mapped fault (structure) | **0.06** | distance to a CGS fault line |
+| Inside/near a mining district | **0.03** | inside, else distance to a district |
 
 Rationale: gem/crystal pegmatites form **in their fertile host granite**, not along
 generic mining structure — so this profile **leads with rock-favorability** (thorium +
-CGS rating + host rock = **0.70**) and de-emphasizes the generic mine/fault/district
-proximity (**0.30**) that dominates the lode profile. Without this split-out profile,
+CGS rating + host rock = **0.80**) and de-emphasizes the generic mine/fault/district
+proximity (**0.20**) that dominates the lode profile. Without this split-out profile,
 any historic mining district (e.g. Breckenridge) scored high for gems regardless of
 gem suitability — that was *known mining activity*, not gem-favorable rock. Thorium is
 the single top factor because it's the one **measured** signal for "fertile granite,"
@@ -94,9 +94,14 @@ and it covers the focus area even where the CGS pegmatite polygons don't. Source
 NURE radiometric grid (≈1 km) in v1; upgradeable to the 200 m Earth MRI survey — same
 factor, finer data. See `docs/DATA_SOURCES.md`.
 
-**Tunable tradeoff.** The 0.70/0.30 rock-vs-activity split favors *exploration* —
-surfacing fertile rock nobody has mined yet. Shift weight back toward
-`near_lode_mine`/`in_district` to anchor more on proven-productive ground instead.
+**Tuned against ground truth.** The 0.80/0.20 rock-vs-activity split was chosen by
+sweeping candidate mixes against the 76 known Park County gem/pegmatite sites: 80/20
+keeps known sites at the ~97th percentile vs background while making ~71% of that
+score *rock*-driven — so it ranks **unmined** fertile ground, not just known mines. A
+50/50 mix ranks known sites at the 100th percentile but only ~40% via rock (it wins by
+mine-proximity, which does not generalize). Shift weight back toward
+`near_lode_mine`/`in_district` to anchor more on proven-productive ground; push past
+80% rock to lean harder into exploration.
 
 ## Membership functions (raw → 0–1)
 

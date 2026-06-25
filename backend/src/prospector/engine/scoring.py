@@ -195,17 +195,20 @@ LODE = Profile([
 # Gem/pegmatite targets (pegmatite, corundum, rare earth) form IN their fertile
 # host granite, not along generic mining structure — so this profile LEADS with
 # rock-favorability (measured thorium fertility + CGS rating + host lithology =
-# 0.70) and de-emphasizes the generic mine/fault/district proximity (0.30) that
-# dominates the lode profile. Without this, any historic mining district (e.g.
-# Breckenridge) scored high for gems regardless of gem suitability. See
+# 0.80) and de-emphasizes generic mine/fault/district proximity (0.20). The 80/20
+# split was TUNED against the 76 known Park County gem/pegmatite sites: it keeps
+# them at the ~97th percentile vs background while making ~71% of that score
+# rock-driven, so it generalizes to UNMINED fertile ground rather than overfitting
+# to known mines. Without a rock-led profile, any historic mining district (e.g.
+# Breckenridge) scored high for gems regardless of suitability. See
 # docs/ENGINE_WEIGHTS.md.
 GEM = Profile([
-    Factor("granite_fertility", "Fertile granite (radiometric thorium)", 0.32),
-    Factor("cgs_potential", "CGS favorability rating", 0.23),
-    Factor("host_lith", "Favorable host rock (intrusive/metamorphic)", 0.15),
-    Factor("near_lode_mine", "Near a known mineral occurrence", 0.16),
-    Factor("near_fault", "Near a mapped fault (structure)", 0.09),
-    Factor("in_district", "Inside/near a mining district", 0.05),
+    Factor("granite_fertility", "Fertile granite (radiometric thorium)", 0.37),
+    Factor("cgs_potential", "CGS favorability rating", 0.26),
+    Factor("host_lith", "Favorable host rock (intrusive/metamorphic)", 0.17),
+    Factor("near_lode_mine", "Near a known mineral occurrence", 0.11),
+    Factor("near_fault", "Near a mapped fault (structure)", 0.06),
+    Factor("in_district", "Inside/near a mining district", 0.03),
 ])
 
 PROFILES = {"placer": PLACER, "lode": LODE, "gem": GEM}

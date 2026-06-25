@@ -48,7 +48,7 @@ def test_gem_profile_leads_with_rock_favorability():
     activity = w.get("near_lode_mine", 0) + w.get("near_fault", 0) + w.get("in_district", 0)
     assert w["granite_fertility"] == max(w.values())  # thorium leads
     assert rock > activity
-    assert rock == pytest.approx(0.70)
+    assert rock == pytest.approx(0.80)
 
 
 def test_non_granite_lode_weights_unchanged_by_feature():
