@@ -38,6 +38,10 @@ _M_PER_DEG_LAT = 111_320.0
 #: Allowed CGS mineral_potential rating columns (whitelist — interpolated into SQL).
 _POTENTIAL_COLS = {"au_placer", "pegmatite", "corundum", "rare_earth", "fluorite"}
 
+#: Targets whose host rock is fertile granite — they get the radiometric thorium
+#: 'granite fertility' factor (carved from the coarse host-lithology weight).
+GRANITE_FERTILITY_TARGETS = {"pegmatite", "corundum", "rare_earth"}
+
 
 @dataclass(frozen=True)
 class TargetSpec:
@@ -120,6 +124,19 @@ def host_lith_score(lith: str | None, potential_col: str | None) -> float:
     if "igneous" in low or "metamorphic" in low:
         return 0.7
     return 0.3
+
+
+def radiometric_fertility(th_ppm: float | None) -> float:
+    """Equivalent-thorium (ppm) → 0-1 'fertile granite' membership.
+
+    Fractionated, gem-pegmatite-fertile granites are thorium-enriched. Ramps from
+    0 at 8 ppm (≈ regional background median) to 1 at 12 ppm (≈ 90th percentile);
+    thresholds from the Park County NURE proof-of-concept (2026-06-24), where known
+    gem/pegmatite sites sat at the ~80th percentile of eTh vs county background.
+    """
+    if th_ppm is None:
+        return 0.0
+    return max(0.0, min(1.0, (th_ppm - 8.0) / 4.0))
 
 
 # Land-ownership access gate by manager (mirrors the map's access grouping).
@@ -234,6 +251,13 @@ def _raw_inputs_sql(profile: str, potential_col: str | None) -> str:
         )
         + " AS rating"
     )
+    if potential_col in GRANITE_FERTILITY_TARGETS:
+        # Nearest radiometric grid point's equivalent thorium (the KNN <-> operator
+        # uses the GiST index; the 0.02° ≈ 1.6 km cap comfortably spans the ~1 km grid).
+        parts.append(
+            "(SELECT r.eth_ppm FROM radiometric r WHERE ST_DWithin(r.geom, c.pt, 0.02) "
+            "ORDER BY r.geom <-> c.pt LIMIT 1) AS radiometric_th"
+        )
     parts.append("EXISTS (SELECT 1 FROM mining_claims mc WHERE ST_Contains(mc.geom, c.pt)) AS in_claim")
     parts.append(
         "(SELECT lo.manager_name FROM land_ownership lo WHERE ST_Contains(lo.geom, c.pt) LIMIT 1) AS owner"
@@ -303,6 +327,12 @@ def _factor_value(name: str, raw: dict, slope: float | None, potential_col: str 
         return reclass_rating(raw["rating"]), f"CGS rating {raw['rating']}" if raw["rating"] else "not CGS-rated here"
     if name == "host_lith":
         return host_lith_score(raw["lith"], potential_col), raw["lith"] or "lithology unknown"
+    if name == "granite_fertility":
+        th = raw.get("radiometric_th")
+        return (
+            radiometric_fertility(th),
+            f"{th:.1f} ppm eq-thorium (radiometric)" if th is not None else "no radiometric coverage here",
+        )
     return 0.0, ""
 
 
@@ -311,14 +341,28 @@ def _band(score: float) -> str:
 
 
 def _effective_factors(spec: TargetSpec) -> list[Factor]:
-    """Profile factors, dropping ones structurally absent for this target (e.g. the
-    CGS rating for lode gold / silver, which have no potential column), with the
-    remaining weights renormalized to sum to 1.0."""
-    factors = [
-        f
-        for f in PROFILES[spec.profile].factors
-        if not (f.name == "cgs_potential" and spec.potential_col is None)
-    ]
+    """Profile factors specialized for this target, renormalized to sum to 1.0.
+
+    - The CGS rating factor is dropped for targets with no potential column (e.g.
+      lode gold / silver).
+    - For granite-hosted gem targets (``GRANITE_FERTILITY_TARGETS``) the coarse
+      host-lithology factor's weight is split in half: half stays on the map-based
+      host-rock proxy, half moves to the measured radiometric 'granite fertility'
+      thorium factor. The favorable-granite theme keeps its total weight; other
+      targets are unchanged (no thorium factor).
+    """
+    granite = spec.potential_col in GRANITE_FERTILITY_TARGETS
+    factors: list[Factor] = []
+    for f in PROFILES[spec.profile].factors:
+        if f.name == "cgs_potential" and spec.potential_col is None:
+            continue
+        if f.name == "host_lith" and granite:
+            factors.append(Factor("host_lith", f.label, f.weight / 2))
+            factors.append(
+                Factor("granite_fertility", "Fertile granite (radiometric thorium)", f.weight / 2)
+            )
+            continue
+        factors.append(f)
     total = sum(f.weight for f in factors) or 1.0
     return [Factor(f.name, f.label, f.weight / total) for f in factors]
 

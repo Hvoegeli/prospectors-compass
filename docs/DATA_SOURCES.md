@@ -21,6 +21,7 @@ All geometries are stored in **SRID 4326 (WGS84)** and clipped to the active
 | Historic metal-mining districts | Colorado Geological Survey ON-007-08D (per-state) | Public-use state-gov data (see note) | `ingest/cgs.py` → `mining_districts` |
 | Mineral resource potential | Colorado Geological Survey ON-007-03 (ArcGIS MapServer) | Public-use state-gov data (see note) | `ingest/cgs.py` → `mineral_potential` |
 | Abandoned mine-land hazards | Colorado Geological Survey ON-008-04 (per-state) | Public-use state-gov data (see note) | `ingest/cgs.py` → `aml_hazards` |
+| Airborne radiometric (thorium) | USGS Bayesian NURE gamma-ray grids, West-Central US tile (DOI 10.5066/P9YEAFHI) | CC0 / public domain (US Gov work) | `ingest/radiometric.py` → `radiometric` |
 | Elevation (hillshade basemap) | USGS 3DEP 1 arc-second DEM (per 1° tile) | Public domain (US Gov work, 17 U.S.C. §105) | `ingest/terrain.py` → `tiles/hillshade.mbtiles` |
 | Slope / aspect (terrain analysis) | Derived from the 3DEP DEM (`gdaldem`) | Public domain (US Gov work, 17 U.S.C. §105) | `ingest/terrain.py` → `processed/slope.tif`, `aspect.tif` |
 | Subwatersheds (HUC12) | USGS Watershed Boundary Dataset (WBD) | Public domain (US Gov work, 17 U.S.C. §105) | `ingest/watershed.py` → `watersheds` |
@@ -174,6 +175,31 @@ ingestion proves worth the effort later.
   are not prospecting targets).
 - **Coverage in focus area:** ~7,378 polygons (clipped from ~22,700 in-bbox).
 - **CRS:** requested back as 4326 via `outSR` (source is NAD27 UTM 13N, 26713).
+
+## USGS Bayesian NURE airborne radiometric grids (DOI 10.5066/P9YEAFHI)
+
+- **Files:** `Predictions_eTh_WestCentUS` and `Predictions_K_WestCentUS` (the
+  West-Central US tile covers Colorado), pulled as shapefile zips from direct
+  ScienceBase `catalog/file/get` URLs (public-domain `__disk__` files — scriptable).
+- **Model:** Bayesian-modeled predictions of equivalent thorium (eTh, ppm) and
+  potassium (%) on a ~1 km point grid, back-transformed from the 1970s–80s NURE
+  airborne gamma-ray survey. We keep `RASTERVALU = 0` cells (inside the survey),
+  merge eTh + K on the shared Albers grid, and store eTh, K, Th/K, and the model's
+  eTh-exceedance probability.
+- **Why:** thorium highs mark fractionated, "fertile" granites — the parent rock of
+  gem-bearing pegmatites — feeding the lode engine's `granite_fertility` factor for
+  granite-hosted gem targets. A Park County proof-of-concept (2026-06-24) found known
+  gem/pegmatite sites sit at the ~80th percentile of eTh vs county background.
+- **Coverage in focus area:** ~14,790 grid points.
+- **CRS:** points built from the file's NAD83 `long`/`lat` columns (≈ WGS84).
+- **⚠️ Resolution caveat:** ~1 km — a *district-scale* fertility signal, not
+  pocket-scale. It narrows to the fertile pluton, not the individual cavity.
+- **Upgrade path:** the high-resolution (200 m) USGS Earth MRI survey (Colorado
+  Mineral Belt, Northeast Block, 2024; **DOI 10.5066/P144WOYP**, CC0, covers
+  Park + Summit) — same `radiometric` table, finer grid. ⚠️ **Not free to script:**
+  that release's rasters live only inside a 4 GB ZIP that ScienceBase serves through
+  a browser-only download manager (scripted requests get HTTP 403 / an HTML shell),
+  so it must be downloaded manually before re-pointing the ingester.
 
 ## CGS Abandoned Mine Land Inventory (ON-008-04)
 

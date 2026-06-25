@@ -26,6 +26,7 @@ from prospector.ingest.focus_area import DEFAULT_REGION
 from prospector.ingest.geology import ingest_geology
 from prospector.ingest.mrds import ingest_mrds
 from prospector.ingest.padus import ingest_ownership
+from prospector.ingest.radiometric import ingest_radiometric
 from prospector.ingest.roads import ingest_forest, ingest_roads
 from prospector.ingest.storage import PROCESSED_DIR, ensure_dir
 from prospector.ingest.streams import ingest_streams
@@ -106,6 +107,13 @@ def _run_potential() -> None:
     print(f"✓ Loaded {count} mineral-potential polygons into PostGIS table 'mineral_potential'.")
 
 
+def _run_radiometric() -> None:
+    region = DEFAULT_REGION
+    print(f"Ingesting airborne radiometric (thorium) grid for: {region.name}")
+    count = ingest_radiometric(region)
+    print(f"✓ Loaded {count} radiometric grid points into PostGIS table 'radiometric'.")
+
+
 def _run_aml() -> None:
     region = DEFAULT_REGION
     print(f"Ingesting CGS abandoned-mine-land hazards for: {region.name}")
@@ -169,6 +177,7 @@ def _run_all() -> None:
     _run_forests()
     _run_districts()
     _run_potential()
+    _run_radiometric()
     _run_aml()
     _run_watershed()
     _run_streams()
@@ -211,6 +220,7 @@ def main() -> None:
     sub.add_parser("forests", help="Download + load USFS Administrative Forest boundaries")
     sub.add_parser("districts", help="Download + load CGS historic metal-mining districts")
     sub.add_parser("potential", help="Download + load CGS mineral-resource potential")
+    sub.add_parser("radiometric", help="Download + load airborne radiometric (thorium) grid")
     sub.add_parser("aml", help="Download + load CGS abandoned-mine-land hazards")
     sub.add_parser("watershed", help="Download + load USGS WBD HUC12 subwatersheds")
     sub.add_parser("streams", help="Download + load USGS NHD stream/river flowlines")
@@ -243,6 +253,8 @@ def main() -> None:
         _run_districts()
     elif args.command == "potential":
         _run_potential()
+    elif args.command == "radiometric":
+        _run_radiometric()
     elif args.command == "aml":
         _run_aml()
     elif args.command == "watershed":

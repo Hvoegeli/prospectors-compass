@@ -72,6 +72,17 @@ structure weight. The CGS rating is an independent expert signal but coarse
 renormalized to sum to 1.0 (`_effective_factors`). A target is never penalized for a
 layer that doesn't exist for it.
 
+**Granite fertility (radiometric thorium).** For the **granite-hosted gem targets**
+(`pegmatite`, `corundum`, `rare_earth`), the coarse `host_lith` weight (0.12) is
+**split in half**: **0.06 stays** on the map-based host-rock proxy and **0.06 moves
+to a measured `granite_fertility` factor** — equivalent thorium (eTh) sampled from
+the airborne radiometric grid. Thorium marks the *fractionated, fertile* granites
+that actually spawn gem pegmatites, so it sharpens the same "favorable granite" theme
+without inflating it (the theme keeps its 0.12 total). Other lode targets (`au_lode`,
+`silver`, `fluorite`) are **unchanged**. Source: the NURE radiometric grid (≈1 km) in
+v1; upgradeable to the 200 m Earth MRI survey — same factor, finer data. See
+`docs/DATA_SOURCES.md`.
+
 ## Membership functions (raw → 0–1)
 
 - **`ramp_down(d, dmax)`** — linear: 1.0 at distance 0, → 0 at `dmax` m. Used for all
@@ -88,6 +99,12 @@ layer that doesn't exist for it.
   pegmatite/corundum favor intrusive (1.0) / metamorphic (0.7) hosts, generic lode
   favors igneous/metamorphic (0.7) over sediments (0.3). A rough v1 proxy — the
   honest weakness here is the 1:500k geology; refine when finer geology is bundled.
+- **`radiometric_fertility(th_ppm)`** — equivalent-thorium (ppm) → 0–1: **0 at 8 ppm**
+  (≈ regional background median), ramping to **1 at 12 ppm** (≈ 90th percentile),
+  clamped. Thorium flags the fractionated, fertile granites that host gem pegmatites.
+  Thresholds come from a Park County proof-of-concept (2026-06-24) where known
+  gem/pegmatite sites sat at the ~80th percentile of eTh vs county background. Drives
+  the `granite_fertility` factor for granite-hosted gem targets.
 - **`fuzzy_or(*v) = 1 − ∏(1 − vᵢ)`** — combines the **correlated** sub-signals of the
   placer "known mineralization" super-factor (a placer mine, a district, and a CGS
   rating tend to co-occur). A plain sum would double-count the same fact; fuzzy-OR

@@ -424,6 +424,47 @@ class Fault(Base):
     )
 
 
+class Radiometric(Base):
+    """An airborne gamma-ray (radiometric) grid point, clipped to the focus area.
+
+    Source (v1): USGS Bayesian-modeled NURE airborne radiometric prediction grids
+    for the conterminous US (West-Central tile, which covers Colorado; DOI
+    10.5066/P9YEAFHI, CC0 public domain). Each point carries equivalent thorium
+    (eTh, ppm), potassium (%), their ratio, and the model's eTh-exceedance
+    probability. Coarse (~1 km), but free and scriptable.
+
+    Thorium highs mark fractionated, "fertile" granites — the parent rock of
+    gem-bearing pegmatites — so this feeds the lode engine's 'granite fertility'
+    factor for granite-hosted gem targets (pegmatite / corundum / rare-earth). A
+    Park County proof-of-concept (2026-06-24) found known gem/pegmatite sites sit
+    at the ~80th percentile of eTh vs county background.
+
+    UPGRADE PATH: re-point the ingester at the high-resolution (200 m) USGS Earth
+    MRI survey (Colorado Mineral Belt, Northeast Block, 2024; DOI 10.5066/P144WOYP)
+    — same table, finer grid. That release is a browser-only 4 GB download, so it
+    is not wired as an automatic source. Coverage layer; re-ingest scoped by
+    `state_fips`. See docs/DATA_SOURCES.md.
+    """
+
+    __tablename__ = "radiometric"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    state_fips: Mapped[str] = mapped_column(String(2), nullable=False, index=True)
+    #: Equivalent thorium (ppm) — the primary 'fertile granite' signal.
+    eth_ppm: Mapped[float | None] = mapped_column(Float, nullable=True, index=True)
+    #: Potassium (percent).
+    k_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    #: Thorium-to-potassium ratio (secondary fractionation signal).
+    th_k: Mapped[float | None] = mapped_column(Float, nullable=True)
+    #: Source model probability that eTh exceeds the national median (NURE; for reference).
+    exceed_prob: Mapped[float | None] = mapped_column(Float, nullable=True)
+    #: Data-source tag, e.g. "NURE-Bayesian" or "EarthMRI-NE-2024".
+    source: Mapped[str | None] = mapped_column(String, nullable=True)
+    geom: Mapped[object] = mapped_column(
+        Geometry(geometry_type="POINT", srid=WGS84, spatial_index=True)
+    )
+
+
 class Trip(Base):
     """A user-created prospecting trip: a named, editable collection of saved
     spots (waypoints) the user wants to visit.
