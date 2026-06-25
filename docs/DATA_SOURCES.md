@@ -194,12 +194,38 @@ ingestion proves worth the effort later.
 - **CRS:** points built from the file's NAD83 `long`/`lat` columns (≈ WGS84).
 - **⚠️ Resolution caveat:** ~1 km — a *district-scale* fertility signal, not
   pocket-scale. It narrows to the fertile pluton, not the individual cavity.
-- **Upgrade path:** the high-resolution (200 m) USGS Earth MRI survey (Colorado
-  Mineral Belt, Northeast Block, 2024; **DOI 10.5066/P144WOYP**, CC0, covers
-  Park + Summit) — same `radiometric` table, finer grid. ⚠️ **Not free to script:**
-  that release's rasters live only inside a 4 GB ZIP that ScienceBase serves through
-  a browser-only download manager (scripted requests get HTTP 403 / an HTML shell),
-  so it must be downloaded manually before re-pointing the ingester.
+- **Hi-res upgrade — EVALUATED AND REJECTED for gems (2026-06-24).** The 50 m USGS
+  Earth MRI survey (Colorado Mineral Belt, **Northeast** Block, 2024;
+  **DOI 10.5066/P144WOYP**, CC0) was downloaded (a 4 GB browser-gated ZIP →
+  `backend/data/raw/earthmri/`, git-ignored) and sampled before any swap. It is the
+  **wrong survey for gem targeting** and was *not* adopted — NURE stays the gem
+  radiometric source. Why: the NE block flies the **Mineral Belt** (lat ~39.0–40.7°N,
+  Alma → Breckenridge → Idaho Springs, metal-vein country), **not** the gem-pegmatite
+  granites of the southern Park / Pikes Peak fringe (Badger Flats, Crystal Peak,
+  Tarryall, all on or *below* the block's 39.0°N southern edge). Measured against our
+  ground truth: only **7 of 76** known Park gem sites get any reading, just **27%** of
+  Park County / 35% of Summit is covered, **Badger Flats reads nodata**, and Crystal
+  Peak is outside the block entirely. Worse, where it *does* overlap, the few covered
+  known sites sit at the **26th** percentile of thorium (vs ~80th on NURE) — because
+  those in-swath sites are mineral-belt vein deposits, not fertile-granite pegmatites.
+  Swapping it in would blank `granite_fertility` over ~73% of Park and invert the
+  signal where present. See `docs/ENGINE_WEIGHTS.md` (radiometric_fertility) and the
+  `ingest/radiometric.py` header.
+- **The downloaded file is kept as a reference for FUTURE, non-gem builds**
+  (`backend/data/raw/earthmri/`, git-ignored): (1) its **airborne magnetic** data —
+  unused by the app — is a strong structural layer for a future hi-res *lode* profile
+  over the Mineral Belt; (2) the 50 m K/eTh/Th-K is right for sharpened **metal**
+  targeting in the Alma/Breckenridge/Idaho Springs districts it actually covers;
+  (3) it is the worked test dataset for a `rasterio` raster→points→PostGIS pipeline
+  when a *correct* gem-area survey is found (Option B: a free hi-res radiometric flown
+  **south of 39°N over the Pikes Peak fringe**, if one exists — Earth MRI is flown
+  survey-by-survey and may not have covered it yet).
+- **To ingest a raster (when Option B lands):** add `rasterio>=1.4,<1.4.4` to
+  `pyproject.toml` and set `[tool.uv] no-build-package = ["rasterio"]` — the 1.4.3
+  cp312/arm64 *wheel* bundles GDAL; newer releases lack that wheel and would
+  source-build against a system GDAL we don't install. The rasters are
+  **EPSG:32613 (UTM 13N, metres)**, 50 m, nodata `-999999`, so the pipeline must
+  reproject to 4326 and drop nodata.
 
 ## CGS Abandoned Mine Land Inventory (ON-008-04)
 

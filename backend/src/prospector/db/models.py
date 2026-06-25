@@ -439,11 +439,12 @@ class Radiometric(Base):
     Park County proof-of-concept (2026-06-24) found known gem/pegmatite sites sit
     at the ~80th percentile of eTh vs county background.
 
-    UPGRADE PATH: re-point the ingester at the high-resolution (200 m) USGS Earth
-    MRI survey (Colorado Mineral Belt, Northeast Block, 2024; DOI 10.5066/P144WOYP)
-    — same table, finer grid. That release is a browser-only 4 GB download, so it
-    is not wired as an automatic source. Coverage layer; re-ingest scoped by
-    `state_fips`. See docs/DATA_SOURCES.md.
+    HI-RES UPGRADE: the 50 m Earth MRI "Northeast Block" (DOI 10.5066/P144WOYP) was
+    tested as a finer replacement (2026-06-24) and REJECTED — it flies the Mineral
+    Belt, not the southern Park / Pikes Peak gem granites (misses Badger Flats;
+    signal inverted where it overlaps). NURE stays the gem source; a valid upgrade
+    must cover south of 39 N. Coverage layer; re-ingest scoped by `state_fips`.
+    See docs/DATA_SOURCES.md.
     """
 
     __tablename__ = "radiometric"

@@ -13,10 +13,15 @@ factor (see engine/scoring.py). Coarse (~1 km); a Park County proof-of-concept
 (2026-06-24) showed known gem/pegmatite sites sit at the ~80th percentile of eTh
 vs county background.
 
-UPGRADE PATH: the 200 m USGS Earth MRI survey (Colorado Mineral Belt, Northeast
-Block, 2024; DOI 10.5066/P144WOYP) — same table, finer grid. That release is a
-browser-only 4 GB download (ScienceBase gates the cloud file behind a JS download
-manager), so it is not wired as an automatic source here.
+HI-RES UPGRADE — evaluated and REJECTED for gems (2026-06-24): the 50 m USGS Earth
+MRI survey (Colorado Mineral Belt, *Northeast* Block; DOI 10.5066/P144WOYP) was
+downloaded and sampled, but it flies the Mineral Belt (Alma→Idaho Springs metal
+country), not the southern Park / Pikes Peak gem-pegmatite granites. It covers only
+27% of Park (7/76 known gem sites; Badger Flats = nodata; Crystal Peak outside) and
+its thorium signal is INVERTED there (covered known sites at the 26th percentile vs
+~80th on NURE). NURE stays the gem source. The file is kept for future non-gem use
+(aeromagnetics, Mineral-Belt lode). A correct gem upgrade would be a free hi-res
+radiometric flown south of 39°N. See docs/DATA_SOURCES.md (NURE section).
 
 License: public domain (US Government work / CC0). See docs/DATA_SOURCES.md.
 """

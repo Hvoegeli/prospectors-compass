@@ -91,8 +91,11 @@ any historic mining district (e.g. Breckenridge) scored high for gems regardless
 gem suitability — that was *known mining activity*, not gem-favorable rock. Thorium is
 the single top factor because it's the one **measured** signal for "fertile granite,"
 and it covers the focus area even where the CGS pegmatite polygons don't. Source: the
-NURE radiometric grid (≈1 km) in v1; upgradeable to the 200 m Earth MRI survey — same
-factor, finer data. See `docs/DATA_SOURCES.md`.
+NURE radiometric grid (≈1 km) in v1. The 50 m Earth MRI "Northeast Block" was tested
+as a finer replacement (2026-06-24) and **rejected** — that survey flies the Mineral
+Belt, not the southern Park / Pikes Peak gem granites, so it misses Badger Flats and
+inverts the signal where it does overlap. A valid hi-res upgrade must cover south of
+39°N. See `docs/DATA_SOURCES.md`.
 
 **Tuned against ground truth.** The 0.80/0.20 rock-vs-activity split was chosen by
 sweeping candidate mixes against the 76 known Park County gem/pegmatite sites: 80/20
