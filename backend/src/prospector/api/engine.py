@@ -20,7 +20,7 @@ router = APIRouter(prefix="/engine", tags=["engine"])
 
 @router.get("/targets")
 def list_targets() -> dict[str, list[dict]]:
-    """Targets the engine can score, with their profile (placer / lode)."""
+    """Targets the engine can score, with their profile (placer / lode / gem)."""
     return {
         "targets": [
             {"id": tid, "label": spec.label, "profile": spec.profile}

@@ -38,8 +38,8 @@ _M_PER_DEG_LAT = 111_320.0
 #: Allowed CGS mineral_potential rating columns (whitelist — interpolated into SQL).
 _POTENTIAL_COLS = {"au_placer", "pegmatite", "corundum", "rare_earth", "fluorite"}
 
-#: Targets whose host rock is fertile granite — they get the radiometric thorium
-#: 'granite fertility' factor (carved from the coarse host-lithology weight).
+#: Gem targets whose host rock is fertile granite — they use the 'gem' profile and
+#: get the radiometric thorium per-cell input (see GEM and _raw_inputs_sql).
 GRANITE_FERTILITY_TARGETS = {"pegmatite", "corundum", "rare_earth"}
 
 
@@ -55,9 +55,9 @@ TARGETS: dict[str, TargetSpec] = {
     "au_placer": TargetSpec("Placer gold", "placer", "au_placer", "Gold"),
     "au_lode": TargetSpec("Lode gold", "lode", None, "Gold"),
     "silver": TargetSpec("Silver", "lode", None, "Silver"),
-    "pegmatite": TargetSpec("Aquamarine & pegmatite gems", "lode", "pegmatite", "Beryllium"),
-    "corundum": TargetSpec("Ruby & sapphire (corundum)", "lode", "corundum", "Gemstone"),
-    "rare_earth": TargetSpec("Rare earths", "lode", "rare_earth", None),
+    "pegmatite": TargetSpec("Aquamarine & pegmatite gems", "gem", "pegmatite", "Beryllium"),
+    "corundum": TargetSpec("Ruby & sapphire (corundum)", "gem", "corundum", "Gemstone"),
+    "rare_earth": TargetSpec("Rare earths", "gem", "rare_earth", None),
     "fluorite": TargetSpec("Fluorite", "lode", "fluorite", "Fluorine-Fluorite"),
 }
 
@@ -192,7 +192,23 @@ LODE = Profile([
     Factor("host_lith", "Favorable host rock", 0.12),
 ])
 
-PROFILES = {"placer": PLACER, "lode": LODE}
+# Gem/pegmatite targets (pegmatite, corundum, rare earth) form IN their fertile
+# host granite, not along generic mining structure — so this profile LEADS with
+# rock-favorability (measured thorium fertility + CGS rating + host lithology =
+# 0.70) and de-emphasizes the generic mine/fault/district proximity (0.30) that
+# dominates the lode profile. Without this, any historic mining district (e.g.
+# Breckenridge) scored high for gems regardless of gem suitability. See
+# docs/ENGINE_WEIGHTS.md.
+GEM = Profile([
+    Factor("granite_fertility", "Fertile granite (radiometric thorium)", 0.32),
+    Factor("cgs_potential", "CGS favorability rating", 0.23),
+    Factor("host_lith", "Favorable host rock (intrusive/metamorphic)", 0.15),
+    Factor("near_lode_mine", "Near a known mineral occurrence", 0.16),
+    Factor("near_fault", "Near a mapped fault (structure)", 0.09),
+    Factor("in_district", "Inside/near a mining district", 0.05),
+])
+
+PROFILES = {"placer": PLACER, "lode": LODE, "gem": GEM}
 
 
 # ----------------------------------------------------------------------------------
@@ -237,6 +253,9 @@ _COL_SQL: dict[str, str] = {
 _PROFILE_COLS: dict[str, list[str]] = {
     "placer": ["d_stream", "d_placer_mine", "in_district", "d_district", "source_in_basin"],
     "lode": ["d_lode_mine", "d_fault", "in_district", "d_district", "lith"],
+    # Gem uses the same raw inputs as lode; the radiometric thorium column is added
+    # by _raw_inputs_sql for GRANITE_FERTILITY_TARGETS (the gem targets).
+    "gem": ["d_lode_mine", "d_fault", "in_district", "d_district", "lith"],
 }
 
 
@@ -341,28 +360,18 @@ def _band(score: float) -> str:
 
 
 def _effective_factors(spec: TargetSpec) -> list[Factor]:
-    """Profile factors specialized for this target, renormalized to sum to 1.0.
+    """Profile factors for this target, renormalized to sum to 1.0.
 
-    - The CGS rating factor is dropped for targets with no potential column (e.g.
-      lode gold / silver).
-    - For granite-hosted gem targets (``GRANITE_FERTILITY_TARGETS``) the coarse
-      host-lithology factor's weight is split in half: half stays on the map-based
-      host-rock proxy, half moves to the measured radiometric 'granite fertility'
-      thorium factor. The favorable-granite theme keeps its total weight; other
-      targets are unchanged (no thorium factor).
+    The CGS rating factor is dropped for targets with no potential column (e.g.
+    lode gold / silver); the remaining weights renormalize so a target is never
+    penalized for a layer that doesn't exist for it. (The gem profile carries the
+    radiometric ``granite_fertility`` factor natively — see ``GEM``.)
     """
-    granite = spec.potential_col in GRANITE_FERTILITY_TARGETS
-    factors: list[Factor] = []
-    for f in PROFILES[spec.profile].factors:
-        if f.name == "cgs_potential" and spec.potential_col is None:
-            continue
-        if f.name == "host_lith" and granite:
-            factors.append(Factor("host_lith", f.label, f.weight / 2))
-            factors.append(
-                Factor("granite_fertility", "Fertile granite (radiometric thorium)", f.weight / 2)
-            )
-            continue
-        factors.append(f)
+    factors = [
+        f
+        for f in PROFILES[spec.profile].factors
+        if not (f.name == "cgs_potential" and spec.potential_col is None)
+    ]
     total = sum(f.weight for f in factors) or 1.0
     return [Factor(f.name, f.label, f.weight / total) for f in factors]
 

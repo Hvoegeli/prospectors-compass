@@ -434,7 +434,7 @@ class Radiometric(Base):
     probability. Coarse (~1 km), but free and scriptable.
 
     Thorium highs mark fractionated, "fertile" granites — the parent rock of
-    gem-bearing pegmatites — so this feeds the lode engine's 'granite fertility'
+    gem-bearing pegmatites — so this feeds the gem profile's 'granite fertility'
     factor for granite-hosted gem targets (pegmatite / corundum / rare-earth). A
     Park County proof-of-concept (2026-06-24) found known gem/pegmatite sites sit
     at the ~80th percentile of eTh vs county background.

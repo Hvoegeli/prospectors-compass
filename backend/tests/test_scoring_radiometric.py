@@ -39,10 +39,16 @@ def test_effective_weights_sum_to_one():
         assert total == pytest.approx(1.0), target
 
 
-def test_thorium_weight_carved_evenly_from_host_lith():
-    """The favorable-granite theme splits 50/50 between map proxy and thorium."""
-    weights = {f.name: f.weight for f in _effective_factors(TARGETS["pegmatite"])}
-    assert weights["granite_fertility"] == pytest.approx(weights["host_lith"])
+def test_gem_profile_leads_with_rock_favorability():
+    """Gem targets must weight rock-favorability (thorium + CGS rating + host rock)
+    above generic mine/fault/district proximity, so a historic mining district can't
+    dominate gem scoring. Thorium is the single top factor."""
+    w = {f.name: f.weight for f in _effective_factors(TARGETS["pegmatite"])}
+    rock = w["granite_fertility"] + w["cgs_potential"] + w["host_lith"]
+    activity = w.get("near_lode_mine", 0) + w.get("near_fault", 0) + w.get("in_district", 0)
+    assert w["granite_fertility"] == max(w.values())  # thorium leads
+    assert rock > activity
+    assert rock == pytest.approx(0.70)
 
 
 def test_non_granite_lode_weights_unchanged_by_feature():

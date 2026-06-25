@@ -51,7 +51,7 @@ it." Known mineralization gets the top weight because gold doesn't travel far fr
 where it eroded out; water proximity and a workable grade are the depositional
 controls; the basin-source factor encodes "trace the creek downhill from a lode."
 
-### Lode (`au_lode`, `silver`, `pegmatite`, `corundum`, `rare_earth`, `fluorite`) — hard rock / gems in host rock, geology/structure driven
+### Lode (`au_lode`, `silver`, `fluorite`) — hard rock in host rock, geology/structure driven
 
 | Factor | Weight | What it measures |
 |---|---:|---|
@@ -72,16 +72,31 @@ structure weight. The CGS rating is an independent expert signal but coarse
 renormalized to sum to 1.0 (`_effective_factors`). A target is never penalized for a
 layer that doesn't exist for it.
 
-**Granite fertility (radiometric thorium).** For the **granite-hosted gem targets**
-(`pegmatite`, `corundum`, `rare_earth`), the coarse `host_lith` weight (0.12) is
-**split in half**: **0.06 stays** on the map-based host-rock proxy and **0.06 moves
-to a measured `granite_fertility` factor** — equivalent thorium (eTh) sampled from
-the airborne radiometric grid. Thorium marks the *fractionated, fertile* granites
-that actually spawn gem pegmatites, so it sharpens the same "favorable granite" theme
-without inflating it (the theme keeps its 0.12 total). Other lode targets (`au_lode`,
-`silver`, `fluorite`) are **unchanged**. Source: the NURE radiometric grid (≈1 km) in
-v1; upgradeable to the 200 m Earth MRI survey — same factor, finer data. See
-`docs/DATA_SOURCES.md`.
+### Gem (`pegmatite`, `corundum`, `rare_earth`) — gems/crystals in fertile granite, rock-favorability driven
+
+| Factor | Weight | What it measures |
+|---|---:|---|
+| Fertile granite (radiometric thorium) | **0.32** | equivalent thorium (eTh) — fractionated, gem-fertile granite |
+| CGS favorability rating | **0.23** | the CGS mineral-potential rating for this target |
+| Favorable host rock | **0.15** | SGMC generalized lithology (intrusive/metamorphic) |
+| Near a known mineral occurrence | **0.16** | distance to a non-placer MRDS site |
+| Near a mapped fault (structure) | **0.09** | distance to a CGS fault line |
+| Inside/near a mining district | **0.05** | inside, else distance to a district |
+
+Rationale: gem/crystal pegmatites form **in their fertile host granite**, not along
+generic mining structure — so this profile **leads with rock-favorability** (thorium +
+CGS rating + host rock = **0.70**) and de-emphasizes the generic mine/fault/district
+proximity (**0.30**) that dominates the lode profile. Without this split-out profile,
+any historic mining district (e.g. Breckenridge) scored high for gems regardless of
+gem suitability — that was *known mining activity*, not gem-favorable rock. Thorium is
+the single top factor because it's the one **measured** signal for "fertile granite,"
+and it covers the focus area even where the CGS pegmatite polygons don't. Source: the
+NURE radiometric grid (≈1 km) in v1; upgradeable to the 200 m Earth MRI survey — same
+factor, finer data. See `docs/DATA_SOURCES.md`.
+
+**Tunable tradeoff.** The 0.70/0.30 rock-vs-activity split favors *exploration* —
+surfacing fertile rock nobody has mined yet. Shift weight back toward
+`near_lode_mine`/`in_district` to anchor more on proven-productive ground instead.
 
 ## Membership functions (raw → 0–1)
 

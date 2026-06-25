@@ -8,7 +8,7 @@ carrying eTh (ppm), K (%), the Th/K ratio, and the model's eTh-exceedance
 probability.
 
 Thorium highs mark fractionated, "fertile" granites — the parent rock of
-gem-bearing pegmatites — so this feeds the lode engine's 'granite fertility'
+gem-bearing pegmatites — so this feeds the gem profile's 'granite fertility'
 factor (see engine/scoring.py). Coarse (~1 km); a Park County proof-of-concept
 (2026-06-24) showed known gem/pegmatite sites sit at the ~80th percentile of eTh
 vs county background.
