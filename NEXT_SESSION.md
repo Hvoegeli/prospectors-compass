@@ -105,6 +105,33 @@ cd frontend && npm run dev                   # http://localhost:5173
 - Rebuild a phone bundle from the desktop: use the "Export to phone" button (writes a
   `.pcbundle` of `trip.json` + clipped `terrain.mbtiles`).
 - If `uv run pytest` fails to spawn after a move: `rm -rf .venv && uv sync` from `backend/`.
+- If `uv run uvicorn …` fails with `Failed to spawn: uvicorn / No such file or directory`,
+  the console script's shebang is stale — run it as a module instead:
+  `uv run python -m uvicorn prospector.main:app --port 8000` (or rebuild: `rm -rf .venv && uv sync`).
+
+## Run as a desktop app (Tauri shell — Phase 1, thin shell)
+
+The frontend is now also wrappable as a native desktop window via **Tauri** (added
+2026-06-29, branch `feat/desktop-tauri-shell`). This is **Phase 1 only**: the desktop
+window wraps the existing Vite UI, but you still start Docker + backend yourself, exactly
+as above. Tauri does *not* yet auto-launch the backend/tiles/db (that is Phase 2+).
+
+```bash
+cd /Users/harrisonvoegeli/Desktop/prospectors-compass
+docker compose up -d                         # postgres (1776) + tileserver-gl (8080)
+cd backend && uv run python -m uvicorn prospector.main:app --port 8000
+cd frontend && npm run tauri dev             # opens the native "Prospector's Compass" window
+```
+
+- Requires the **Rust toolchain** (installed to `~/.cargo`; build-time only). If `cargo` is
+  missing: `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y`.
+- Tauri config: `frontend/src-tauri/tauri.conf.json` (window size, title, `devUrl` 5173,
+  `frontendDist ../dist`, bundle id `com.harrisonvoegeli.prospectors-compass`).
+- First `tauri dev` compiles the Rust shell (~35s here); later launches are instant. Build
+  artifacts live in `frontend/src-tauri/target/` (git-ignored).
+- Uses macOS's built-in WebKit engine (not a bundled Chromium) — ~10MB app, no browser.
+- **Phase 2 (not yet built):** make the shell auto-spawn the Python backend on open; then
+  Phase 3, the tile/data services. See chat history for the phased plan.
 
 ## Outstanding / parked
 
