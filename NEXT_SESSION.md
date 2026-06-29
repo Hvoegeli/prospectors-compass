@@ -109,20 +109,31 @@ cd frontend && npm run dev                   # http://localhost:5173
   the console script's shebang is stale — run it as a module instead:
   `uv run python -m uvicorn prospector.main:app --port 8000` (or rebuild: `rm -rf .venv && uv sync`).
 
-## Run as a desktop app (Tauri shell — Phase 2)
+## Run as a desktop app (Tauri shell — Phase 3a)
 
 The frontend runs as a native desktop window via **Tauri** (Phase 1 added 2026-06-29 on
-`feat/desktop-tauri-shell`; Phase 2 on `feat/desktop-phase2-backend-autolaunch`). As of
-**Phase 2 the app auto-starts the FastAPI backend itself** — you no longer run uvicorn by
-hand. You still start Docker (tiles + Postgres) yourself; auto-launching those is Phase 3.
+`feat/desktop-tauri-shell`; Phase 2 on `feat/desktop-phase2-backend-autolaunch`; Phase 3a on
+`feat/desktop-phase3a-docker-autostart`). As of **Phase 3a the app starts the WHOLE local
+stack itself** — Docker services (Postgres + tiles), then the FastAPI backend. You no longer
+run `docker compose up -d` or `uvicorn` by hand; just launch the app. The only prerequisite
+is that the **Docker daemon is running** (Docker Desktop / Colima).
 
 ```bash
-cd /Users/harrisonvoegeli/Desktop/prospectors-compass
-docker compose up -d                         # postgres (1776) + tileserver-gl (8080)
-cd frontend && npm run tauri dev             # opens the window AND auto-starts the backend
+cd /Users/harrisonvoegeli/Desktop/prospectors-compass/frontend
+npm run tauri dev                            # starts Docker services + backend + window
 ```
 
-- **Backend auto-launch** lives in `frontend/src-tauri/src/lib.rs`:
+- **Startup orchestration** lives in `frontend/src-tauri/src/lib.rs` (`run()` setup):
+  1. `docker compose up -d` from the repo root (idempotent; brings up Postgres :1776 +
+     tiles :8080). Requires the Docker daemon; if it's down, the app logs the error and
+     loads anyway (data will be unavailable until Docker is up).
+  2. waits for `:1776` and `:8080` to accept connections (only if the docker command
+     succeeded, so a dead daemon doesn't freeze the window on dead ports).
+  3. then the backend (below), then shows the UI.
+  - Docker services are **left running on app exit** on purpose — they are persistent infra
+    (`restart: unless-stopped`, with a data volume) shared with other dev work. To stop them
+    yourself: `docker compose stop`.
+- **Backend auto-launch** (Phase 2) also lives in `frontend/src-tauri/src/lib.rs`:
   - On startup the app checks `:8000`. If something is already listening (e.g. you started
     the backend in a terminal), it **uses that one** and won't double-start.
   - Otherwise it spawns `backend/.venv/bin/python -m uvicorn prospector.main:app --port 8000`
@@ -140,9 +151,11 @@ cd frontend && npm run tauri dev             # opens the window AND auto-starts 
 - First `tauri dev` compiles the Rust shell (~35s); later launches are instant. Build
   artifacts live in `frontend/src-tauri/target/` (git-ignored).
 - Uses macOS's built-in WebKit engine (not a bundled Chromium) — ~10MB app, no browser.
-- **Phase 3 (not yet built):** auto-launch the tile server + Postgres (the Docker services),
-  and package a distributable `.app` with an embedded Python (the spawn path above assumes
-  the repo + venv are present on disk). See chat history for the phased plan.
+- **Phase 3b (not yet built):** package a distributable `.app` that runs on a fresh machine
+  with no repo / Python / dev tools — bundle the Python backend AND ship PostGIS + tiles
+  offline. This is a real architectural effort (the stack is locked to PostGIS, which does
+  not embed easily); the current spawn/compose paths all assume the repo + `backend/.venv`
+  + Docker are present on disk. Needs its own planning before coding. See chat history.
 
 ## Outstanding / parked
 
