@@ -109,29 +109,40 @@ cd frontend && npm run dev                   # http://localhost:5173
   the console script's shebang is stale — run it as a module instead:
   `uv run python -m uvicorn prospector.main:app --port 8000` (or rebuild: `rm -rf .venv && uv sync`).
 
-## Run as a desktop app (Tauri shell — Phase 1, thin shell)
+## Run as a desktop app (Tauri shell — Phase 2)
 
-The frontend is now also wrappable as a native desktop window via **Tauri** (added
-2026-06-29, branch `feat/desktop-tauri-shell`). This is **Phase 1 only**: the desktop
-window wraps the existing Vite UI, but you still start Docker + backend yourself, exactly
-as above. Tauri does *not* yet auto-launch the backend/tiles/db (that is Phase 2+).
+The frontend runs as a native desktop window via **Tauri** (Phase 1 added 2026-06-29 on
+`feat/desktop-tauri-shell`; Phase 2 on `feat/desktop-phase2-backend-autolaunch`). As of
+**Phase 2 the app auto-starts the FastAPI backend itself** — you no longer run uvicorn by
+hand. You still start Docker (tiles + Postgres) yourself; auto-launching those is Phase 3.
 
 ```bash
 cd /Users/harrisonvoegeli/Desktop/prospectors-compass
 docker compose up -d                         # postgres (1776) + tileserver-gl (8080)
-cd backend && uv run python -m uvicorn prospector.main:app --port 8000
-cd frontend && npm run tauri dev             # opens the native "Prospector's Compass" window
+cd frontend && npm run tauri dev             # opens the window AND auto-starts the backend
 ```
 
+- **Backend auto-launch** lives in `frontend/src-tauri/src/lib.rs`:
+  - On startup the app checks `:8000`. If something is already listening (e.g. you started
+    the backend in a terminal), it **uses that one** and won't double-start.
+  - Otherwise it spawns `backend/.venv/bin/python -m uvicorn prospector.main:app --port 8000`
+    (the venv Python directly, not `uv run`, so the child IS uvicorn — one clean process to
+    kill, no PATH lookup). Requires `backend/.venv` to exist (`cd backend && uv sync`).
+  - It then **waits up to 15s for `:8000` to answer** before showing the UI, because the
+    frontend fetches with no retry and would otherwise flash "could not load".
+  - On normal app close it kills the backend it started. A *force* kill (SIGKILL / Activity
+    Monitor) can orphan the backend — the next launch detects it and reuses it, so it
+    self-corrects. If you want a truly fresh backend: `pkill -f "uvicorn prospector"`.
 - Requires the **Rust toolchain** (installed to `~/.cargo`; build-time only). If `cargo` is
   missing: `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y`.
 - Tauri config: `frontend/src-tauri/tauri.conf.json` (window size, title, `devUrl` 5173,
   `frontendDist ../dist`, bundle id `com.harrisonvoegeli.prospectors-compass`).
-- First `tauri dev` compiles the Rust shell (~35s here); later launches are instant. Build
+- First `tauri dev` compiles the Rust shell (~35s); later launches are instant. Build
   artifacts live in `frontend/src-tauri/target/` (git-ignored).
 - Uses macOS's built-in WebKit engine (not a bundled Chromium) — ~10MB app, no browser.
-- **Phase 2 (not yet built):** make the shell auto-spawn the Python backend on open; then
-  Phase 3, the tile/data services. See chat history for the phased plan.
+- **Phase 3 (not yet built):** auto-launch the tile server + Postgres (the Docker services),
+  and package a distributable `.app` with an embedded Python (the spawn path above assumes
+  the repo + venv are present on disk). See chat history for the phased plan.
 
 ## Outstanding / parked
 
