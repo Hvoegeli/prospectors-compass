@@ -34,5 +34,33 @@ services:
       - ./tiles:/data:ro
     restart: unless-stopped
 
+  backend:
+    # FastAPI backend, containerized (Phase 3b) so the desktop app no longer needs a
+    # host Python/venv. Build context is the repo root so the Dockerfile can copy backend/.
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    image: prospector-backend:local
+    container_name: prospector-backend
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # Talk to the db SERVICE on its internal port 5432 (not the host's 1776 mapping).
+      # db/base.py rewrites postgresql:// -> postgresql+psycopg://.
+      DATABASE_URL: "postgresql://prospector:prospector@db:5432/prospector"
+      LLM_MOCK_MODE: "true"      # v1 is offline — never calls Anthropic.
+      ANTHROPIC_API_KEY: ""
+    volumes:
+      # Placer scoring samples this slope raster via the in-image gdallocationinfo.
+      - ./backend/data/processed/slope.tif:/app/data/processed/slope.tif:ro
+      # Field-find photos are written at runtime — keep them in a named volume,
+      # not the 18 GB host backend/data.
+      - prospector_findphotos:/app/data/find-photos
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
 volumes:
   prospector_pgdata:
+  prospector_findphotos:

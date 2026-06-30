@@ -23,12 +23,16 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Prospector's Compass", lifespan=lifespan)
 
-# Allow the local Vite dev server (desktop frontend) to call the API.
+# Allow the desktop frontend to call the API. In dev the UI is the Vite server
+# (:5173); in a packaged Tauri app (Phase 3b) it's served from the tauri://localhost
+# custom-scheme origin, so its cross-origin fetch to :8000 must be allowed too.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:5173",
         "http://127.0.0.1:5173",
+        "tauri://localhost",
+        "http://tauri.localhost",
     ],
     allow_methods=["*"],
     allow_headers=["*"],

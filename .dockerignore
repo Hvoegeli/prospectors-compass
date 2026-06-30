@@ -1,0 +1,29 @@
+# Keep the Docker build context tiny. The backend image only needs
+# backend/pyproject.toml, backend/uv.lock, and backend/src (see backend/Dockerfile).
+# Without this, `context: .` would tar the whole repo — including the multi-GB
+# backend/data, tiles, and Rust target dirs — and crawl.
+
+.git
+**/.git
+**/__pycache__
+**/*.pyc
+**/.venv
+**/node_modules
+
+# Large data / build artifacts — never needed to build the backend image
+backend/data
+tiles
+frontend/dist
+frontend/src-tauri/target
+graphify-out
+**/*.mbtiles
+**/*.pcbundle
+**/*.pcfinds
+
+# Unrelated to the backend image
+frontend/node_modules
+mobile
+mockups
+assets
+docs
+*.md

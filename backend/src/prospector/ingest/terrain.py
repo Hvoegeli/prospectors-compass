@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import logging
 import math
+import shutil
 import subprocess
 
 import geopandas as gpd
@@ -228,24 +229,32 @@ def build_contours(region: DownloadRegion = DEFAULT_REGION) -> int:
 
 
 def sample_raster(raster_path, points: list[tuple[float, float]]) -> list[float | None]:
-    """Sample a raster at WGS84 (lon, lat) points via dockerized ``gdallocationinfo``.
+    """Sample a raster at WGS84 (lon, lat) points via ``gdallocationinfo``.
 
-    One container handles all points (coords piped on stdin). Returns one value
-    per point in order; ``None`` for points outside the raster. Reuses the
-    GDAL Docker image so no Python raster binding is needed.
+    Coords for all points are piped on stdin in one call. Returns one value per
+    point in order; ``None`` for points outside the raster.
+
+    If a local ``gdallocationinfo`` is on PATH (e.g. inside the backend Docker
+    image, Phase 3b), it is called directly. Otherwise — a host dev machine
+    without GDAL installed — we borrow the binary from the GDAL Docker image,
+    mounting the project so no Python raster binding is needed.
     """
     if not points:
         return []
     if not raster_path.exists():
         return [None] * len(points)
     stdin = "\n".join(f"{lon} {lat}" for lon, lat in points) + "\n"
-    cmd = [
-        "docker", "run", "--rm", "-i",
-        "-v", f"{PROJECT_ROOT}:/work",
-        GDAL_IMAGE,
-        "gdallocationinfo", "-valonly", "-l_srs", "EPSG:4326",
-        _container_path(raster_path),
-    ]
+    local_gdal = shutil.which("gdallocationinfo")
+    if local_gdal:
+        cmd = [local_gdal, "-valonly", "-l_srs", "EPSG:4326", str(raster_path)]
+    else:
+        cmd = [
+            "docker", "run", "--rm", "-i",
+            "-v", f"{PROJECT_ROOT}:/work",
+            GDAL_IMAGE,
+            "gdallocationinfo", "-valonly", "-l_srs", "EPSG:4326",
+            _container_path(raster_path),
+        ]
     # No check=True: gdallocationinfo exits non-zero for points off the raster
     # extent — that's expected (→ None), not an error. Values map to points by
     # line index; in practice points are either all in-coverage or all out.
