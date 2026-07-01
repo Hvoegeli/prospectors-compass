@@ -834,8 +834,8 @@ type Waypoint = {
   details: Record<string, unknown>
   note: string
 }
-type TripSummary = { id: number; name: string; count: number; created_at: string; updated_at: string }
-type TripFull = { id: number; name: string; waypoints: Waypoint[]; created_at: string; updated_at: string }
+type TripSummary = { id: number; name: string; target: string | null; count: number; created_at: string; updated_at: string }
+type TripFull = { id: number; name: string; target: string | null; waypoints: Waypoint[]; created_at: string; updated_at: string }
 
 const TRIPS_URL = `${API_BASE}/trips`
 async function apiListTrips(): Promise<TripSummary[]> {
@@ -843,11 +843,11 @@ async function apiListTrips(): Promise<TripSummary[]> {
   if (!r.ok) throw new Error(`${r.status}`)
   return r.json()
 }
-async function apiCreateTrip(name: string): Promise<TripFull> {
+async function apiCreateTrip(name: string, target: string | null): Promise<TripFull> {
   const r = await fetch(TRIPS_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name }),
+    body: JSON.stringify({ name, target }),
   })
   if (!r.ok) throw new Error(`${r.status}`)
   return r.json()
@@ -857,7 +857,7 @@ async function apiGetTrip(id: number): Promise<TripFull> {
   if (!r.ok) throw new Error(`${r.status}`)
   return r.json()
 }
-async function apiUpdateTrip(id: number, patch: { name?: string; waypoints?: Waypoint[] }): Promise<TripFull> {
+async function apiUpdateTrip(id: number, patch: { name?: string; target?: string | null; waypoints?: Waypoint[] }): Promise<TripFull> {
   const r = await fetch(`${TRIPS_URL}/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
@@ -1760,7 +1760,12 @@ export default function MapView() {
       return
     }
     try {
-      setActiveTrip(await apiGetTrip(id))
+      const trip = await apiGetTrip(id)
+      setActiveTrip(trip)
+      // Align the resource selection (the Recommend target) with THIS trip's resource,
+      // so a subsequent Score/export defaults to it. (The rendered heat map only
+      // redraws when you click "Score this view" — scoring is manual.)
+      if (trip.target) setEngineTarget(trip.target)
     } catch (err) {
       console.error('trip load failed', err)
       setActiveTrip(null)
@@ -1769,7 +1774,8 @@ export default function MapView() {
 
   async function createNewTrip(): Promise<void> {
     try {
-      const t = await apiCreateTrip('Untitled trip')
+      // A new trip is "for" whatever resource you're currently looking at.
+      const t = await apiCreateTrip('Untitled trip', engineTarget)
       await refreshTrips()
       setActiveTripId(t.id)
       setActiveTrip(t)
@@ -1785,7 +1791,7 @@ export default function MapView() {
     let id = tripId
     let current: Waypoint[] = []
     if (id == null) {
-      id = (await apiCreateTrip('Untitled trip')).id
+      id = (await apiCreateTrip('Untitled trip', engineTarget)).id
     } else {
       try {
         current = (await apiGetTrip(id)).waypoints
@@ -1824,6 +1830,17 @@ export default function MapView() {
     await refreshTrips()
   }
 
+  // Change what resource this trip is for. Persists it on the trip (so export uses
+  // it) and aligns the Recommend selection to match. (Click "Score this view" to
+  // redraw the heat map for it.)
+  async function setActiveTripTarget(target: string): Promise<void> {
+    const t = activeTripRef.current
+    if (!t) return
+    setEngineTarget(target)
+    setActiveTrip(await apiUpdateTrip(t.id, { target }))
+    await refreshTrips()
+  }
+
   async function deleteActiveTrip(): Promise<void> {
     const t = activeTripRef.current
     if (!t) return
@@ -1832,16 +1849,18 @@ export default function MapView() {
     await selectTrip(list[0]?.id ?? null)
   }
 
-  // Build an offline .pcbundle for the active trip (the currently-selected engine
-  // target is baked in) and download it, ready to AirDrop to the phone. The
-  // backend clips the basemap + scores the footprint, so this can take a few
-  // seconds — `exporting` drives the button's busy state.
+  // Build an offline .pcbundle for the active trip and download it, ready to AirDrop
+  // to the phone. The heat map is scored for THE TRIP'S OWN resource (t.target) so it
+  // always matches the pins — not whatever target happens to be on screen. (Legacy
+  // trips with no saved resource fall back to the current selection.) The backend
+  // clips the basemap + scores the footprint, so this can take a few seconds.
   async function exportActiveTrip(): Promise<void> {
     const t = activeTripRef.current
     if (!t || t.waypoints.length === 0) return
     setExporting(true)
     try {
-      const url = `${TRIPS_URL}/${t.id}/export-bundle?target=${encodeURIComponent(engineTarget)}&buffer_mi=3`
+      const tgt = t.target ?? engineTarget
+      const url = `${TRIPS_URL}/${t.id}/export-bundle?target=${encodeURIComponent(tgt)}&buffer_mi=3`
       const r = await fetch(url)
       if (!r.ok) {
         const msg = await r.text().catch(() => '')
@@ -2235,6 +2254,18 @@ export default function MapView() {
                     )}
                   </div>
 
+                  <label className="trip-resource" title="What this trip is prospecting for. The heat map you export to your phone is scored for this resource, so it always matches the trip's pins.">
+                    <span className="field-label">Prospecting for</span>
+                    <select
+                      value={activeTrip.target ?? engineTarget}
+                      onChange={(e) => void setActiveTripTarget(e.target.value)}
+                    >
+                      {engineTargets.map((t) => (
+                        <option key={t.id} value={t.id}>{t.label}</option>
+                      ))}
+                    </select>
+                  </label>
+
                   {activeTrip.waypoints.length === 0 ? (
                     <p className="trip-empty">
                       No spots yet. Click a mine, an engine Top Spot, or a location, then use
@@ -2283,7 +2314,10 @@ export default function MapView() {
                       title={
                         activeTrip.waypoints.length === 0
                           ? 'Add at least one spot first'
-                          : `Build an offline bundle (${engineTarget}) to AirDrop to your phone`
+                          : `Build an offline bundle for ${
+                              engineTargets.find((t) => t.id === (activeTrip.target ?? engineTarget))?.label ??
+                              (activeTrip.target ?? engineTarget)
+                            } to AirDrop to your phone`
                       }
                       onClick={() => void exportActiveTrip()}
                     >

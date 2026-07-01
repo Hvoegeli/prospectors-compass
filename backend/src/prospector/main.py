@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import text
 
 from prospector.api import engine, land_status, layers, trips
 from prospector.api.trips import FIND_PHOTOS_DIR
@@ -18,6 +19,10 @@ init_tracing()
 async def lifespan(app: FastAPI):
     # Ensure the user-data 'trips' table exists (it has no ingest to create it).
     Trip.__table__.create(bind=db_engine, checkfirst=True)
+    # Add the 'target' column to trips created before it existed. Idempotent, so
+    # it's safe on every boot (create() above won't alter an existing table).
+    with db_engine.begin() as conn:
+        conn.execute(text("ALTER TABLE trips ADD COLUMN IF NOT EXISTS target VARCHAR"))
     yield
 
 
