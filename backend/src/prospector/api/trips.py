@@ -73,16 +73,21 @@ class Waypoint(BaseModel):
 
 class TripCreate(BaseModel):
     name: str
+    #: Engine target this trip is for (e.g. "au_placer") — what its exported
+    #: heat map gets scored for. Captured from the desktop's current selection.
+    target: str | None = None
 
 
 class TripUpdate(BaseModel):
     name: str | None = None
+    target: str | None = None
     waypoints: list[Waypoint] | None = None
 
 
 class TripSummary(BaseModel):
     id: int
     name: str
+    target: str | None = None
     count: int
     created_at: datetime
     updated_at: datetime
@@ -91,6 +96,7 @@ class TripSummary(BaseModel):
 class TripOut(BaseModel):
     id: int
     name: str
+    target: str | None = None
     waypoints: list[Waypoint]
     created_at: datetime
     updated_at: datetime
@@ -105,7 +111,7 @@ def _require(db: Session, trip_id: int) -> Trip:
 
 def _out(t: Trip) -> TripOut:
     return TripOut(
-        id=t.id, name=t.name, waypoints=t.waypoints or [],
+        id=t.id, name=t.name, target=t.target, waypoints=t.waypoints or [],
         created_at=t.created_at, updated_at=t.updated_at,
     )
 
@@ -116,7 +122,7 @@ def list_trips(db: Session = Depends(get_db)) -> list[TripSummary]:
     trips = db.scalars(select(Trip).order_by(Trip.updated_at.desc())).all()
     return [
         TripSummary(
-            id=t.id, name=t.name, count=len(t.waypoints or []),
+            id=t.id, name=t.name, target=t.target, count=len(t.waypoints or []),
             created_at=t.created_at, updated_at=t.updated_at,
         )
         for t in trips
@@ -125,7 +131,7 @@ def list_trips(db: Session = Depends(get_db)) -> list[TripSummary]:
 
 @router.post("")
 def create_trip(body: TripCreate, db: Session = Depends(get_db)) -> TripOut:
-    trip = Trip(name=body.name.strip() or "Untitled trip", waypoints=[])
+    trip = Trip(name=body.name.strip() or "Untitled trip", target=body.target, waypoints=[])
     db.add(trip)
     db.commit()
     db.refresh(trip)
@@ -272,16 +278,28 @@ async def import_finds(request: Request, db: Session = Depends(get_db)) -> TripO
 @router.get("/{trip_id}/export-bundle")
 def export_trip_bundle(
     trip_id: int,
-    target: str = Query(..., description="engine target id to bake into the bundle"),
+    target: str | None = Query(
+        None,
+        description="engine target id to bake in; defaults to the trip's saved resource",
+    ),
     buffer_mi: float = Query(3.0, ge=0.5, le=25, description="footprint pad around the waypoints"),
     db: Session = Depends(get_db),
 ) -> FileResponse:
     """Build + download a single-file offline ``.pcbundle`` for the iOS field app:
     the trip's waypoints, the engine's scored areas over the trip footprint, and a
-    clipped terrain basemap. The temp file is deleted after the response is sent."""
+    clipped terrain basemap. The temp file is deleted after the response is sent.
+
+    The heat map is scored for the trip's own resource (``trip.target``) so it always
+    matches the pins; an explicit ``target`` query param can still override it."""
     trip = _require(db, trip_id)
+    resolved_target = target or trip.target
+    if not resolved_target:
+        raise HTTPException(
+            status_code=400,
+            detail="This trip has no resource set — choose what you're prospecting for before exporting.",
+        )
     try:
-        path = build_trip_bundle(trip.id, trip.name, trip.waypoints or [], target, buffer_mi)
+        path = build_trip_bundle(trip.id, trip.name, trip.waypoints or [], resolved_target, buffer_mi)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     slug = re.sub(r"[^A-Za-z0-9._-]+", "-", trip.name).strip("-") or f"trip-{trip.id}"
@@ -299,6 +317,8 @@ def update_trip(trip_id: int, body: TripUpdate, db: Session = Depends(get_db)) -
     trip = _require(db, trip_id)
     if body.name is not None and body.name.strip():
         trip.name = body.name.strip()
+    if body.target is not None:
+        trip.target = body.target or None  # "" clears it
     if body.waypoints is not None:
         # Reassign (not in-place mutate) so SQLAlchemy detects the JSONB change.
         trip.waypoints = [w.model_dump() for w in body.waypoints]

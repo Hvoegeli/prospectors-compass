@@ -484,6 +484,11 @@ class Trip(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String, nullable=False)
+    #: The engine target this trip is for (e.g. "au_placer"). It's what the
+    #: exported bundle's heat map is scored for, so the map always matches the
+    #: trip's pins — independent of whatever target is on screen at export time.
+    #: Nullable for trips created before this field existed.
+    target: Mapped[str | None] = mapped_column(String, nullable=True)
     #: Waypoint snapshots: [{id, lon, lat, title, kind, details, note}, ...].
     waypoints: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
     created_at: Mapped[datetime] = mapped_column(
