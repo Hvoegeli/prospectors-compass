@@ -47,7 +47,7 @@ import { appendFind, buildFindsBundle, deleteFind, deleteFindsForTrip, findsFC, 
 import { addPin, deletePin, EMPTY_ANNOTATIONS, loadAnnotations, pinsFC, setNote, type Annotations, type DroppedPin } from './src/annotations'
 import { bearingDegrees, cardinal16, distanceMeters, formatDistanceImperial } from './src/geo'
 import * as Sharing from 'expo-sharing'
-import { ensureBasemapDirs, ensureFonts, topoStyleIfAvailable } from './src/basemap'
+import { ensureBasemapDirs, ensureFonts, hasVectorBase, importBasemapFromUri, isBasemapUri, topoStyleIfAvailable } from './src/basemap'
 
 // Colorado I-70 corridor — a sane pre-trip fallback if we somehow render the map
 // before a footprint is known (we normally gate on the trip loading first).
@@ -200,6 +200,8 @@ export default function App() {
   // The offline topo basemap style, if the sideloaded statewide vector base +
   // glyph fonts are present on the device (null → raster hillshade only).
   const [topoStyle, setTopoStyle] = useState<StyleSpecification | null>(null)
+  // Bumped after a basemap is installed in-app, to re-evaluate the topo style.
+  const [basemapVersion, setBasemapVersion] = useState(0)
   // Every trip stored on the phone, for the trip picker (refreshed on load/import).
   const [trips, setTrips] = useState<TripSummary[]>([])
   // Keyboard height, so the bottom find-form panel can lift above the keyboard
@@ -249,6 +251,19 @@ export default function App() {
     let active = true
     async function handleOpenUrl(url: string | null): Promise<void> {
       if (!active || !url || !url.startsWith('file://')) return
+      // An .mbtiles opened from Files/AirDrop installs the offline topo base (the
+      // no-Mac restore path); everything else is treated as a trip bundle.
+      if (isBasemapUri(url)) {
+        const ok = await importBasemapFromUri(url)
+        if (!active) return
+        if (ok) {
+          setBasemapVersion((v) => v + 1) // re-evaluate the topo style with it installed
+          Alert.alert('Basemap installed', 'The offline topo basemap is ready.')
+        } else {
+          Alert.alert('Couldn’t install basemap', 'That .mbtiles file could not be read.')
+        }
+        return
+      }
       try {
         const loaded = await importBundleFromUri(url)
         if (!active) return
@@ -289,7 +304,7 @@ export default function App() {
     return () => {
       active = false
     }
-  }, [trip])
+  }, [trip, basemapVersion])
 
   // Request foreground location, then watch position. GPS works with no cell
   // signal (the receiver is passive), so this functions fully in the field.
@@ -400,6 +415,10 @@ export default function App() {
   ]
     .filter(Boolean)
     .join(', ')
+
+  // Is the statewide vector base installed? Drives the install hint in Layers.
+  // Re-checked when a basemap is imported (basemapVersion) or the trip changes.
+  const vectorInstalled = useMemo(() => hasVectorBase(), [basemapVersion, trip])
 
   // Seed the spot card's note field whenever a pin opens: show the locally-saved
   // note if there is one, else the note that rode in on the bundle.
@@ -1230,6 +1249,11 @@ export default function App() {
               <LayerToggle label="Contour lines" on={vis.contours} onPress={() => toggleVis('contours')} />
               <LayerToggle label="Saved spots" on={vis.waypoints} onPress={() => toggleVis('waypoints')} />
               <LayerToggle label="My finds" on={vis.finds} onPress={() => toggleVis('finds')} />
+              {!vectorInstalled && (
+                <Text style={styles.basemapHint}>
+                  No offline topo base installed. Open your colorado.mbtiles from the Files app (or AirDrop it) and choose “Compass Field” to install it.
+                </Text>
+              )}
               {vis.land && (
                 <View style={styles.landLegend}>
                   {LAND_GROUPS.map((g) => (
@@ -1660,6 +1684,7 @@ const styles = StyleSheet.create({
 
   wpList: { maxHeight: 250 },
   layersList: { maxHeight: 320 },
+  basemapHint: { color: '#fbbf24', fontSize: 12, lineHeight: 17, marginTop: 8, marginBottom: 4 },
   wpRow: {
     flexDirection: 'row',
     alignItems: 'center',

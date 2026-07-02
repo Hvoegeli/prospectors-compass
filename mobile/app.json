@@ -16,6 +16,11 @@
             "CFBundleTypeName": "Prospector's Compass Trip",
             "LSHandlerRank": "Owner",
             "LSItemContentTypes": ["com.hvoegeli.compassfield.pcbundle"]
+          },
+          {
+            "CFBundleTypeName": "MBTiles Basemap",
+            "LSHandlerRank": "Alternate",
+            "LSItemContentTypes": ["com.hvoegeli.compassfield.mbtiles"]
           }
         ],
         "UTExportedTypeDeclarations": [
@@ -25,6 +30,14 @@
             "UTTypeConformsTo": ["public.data"],
             "UTTypeTagSpecification": {
               "public.filename-extension": ["pcbundle"]
+            }
+          },
+          {
+            "UTTypeIdentifier": "com.hvoegeli.compassfield.mbtiles",
+            "UTTypeDescription": "MBTiles Basemap",
+            "UTTypeConformsTo": ["public.database", "public.data"],
+            "UTTypeTagSpecification": {
+              "public.filename-extension": ["mbtiles"]
             }
           }
         ]

@@ -69,6 +69,36 @@ export async function ensureFonts(): Promise<void> {
   }
 }
 
+/** True if the path looks like an MBTiles basemap the user opened from Files. */
+export function isBasemapUri(uri: string): boolean {
+  return /\.mbtiles$/i.test(uri.split('?')[0])
+}
+
+/** Install a basemap the user opened from Files/AirDrop: copy the .mbtiles into
+ *  Documents/basemap, replacing any existing one. This is the no-Mac restore path —
+ *  after a reinstall, open your saved colorado.mbtiles to reinstall the topo base.
+ *  Returns true on success. The vector base is large (~337 MB); File.copy streams
+ *  it, so this doesn't load it into memory. */
+export async function importBasemapFromUri(uri: string): Promise<boolean> {
+  try {
+    ensureBasemapDirs()
+    const src = new File(uri)
+    if (!src.exists) return false
+    const dest = new File(baseDir(), VECTOR_NAME)
+    if (dest.exists) dest.delete()
+    src.copy(dest)
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** Whether the statewide vector base is installed on the device (drives the
+ *  "open a .mbtiles to install the topo base" hint when it's missing). */
+export function hasVectorBase(): boolean {
+  return new File(baseDir(), VECTOR_NAME).exists
+}
+
 /** The offline topo style IF the statewide vector base AND the glyph fonts are
  *  both present on the device; otherwise null (caller falls back to raster).
  *  Pass the trip's per-trip hillshade to render shaded relief under the topo. */
