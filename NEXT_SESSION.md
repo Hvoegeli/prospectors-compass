@@ -120,8 +120,23 @@ is that the **Docker daemon is running** (Docker Desktop / Colima).
 
 ```bash
 cd /Users/harrisonvoegeli/Desktop/prospectors-compass/frontend
-npm run tauri dev                            # starts Docker services + backend + window
+npm run tauri dev                            # DEV: starts Docker services + backend + window
+npm run tauri build                          # RELEASE: builds the installable .app + .dmg
 ```
+
+**Build the installable app (Phase 3b Stage 2 — works on this machine).** `npm run tauri build`
+produces a real double-clickable app with the rounded logo icon, UI bundled as static files
+(no dev server), under `frontend/src-tauri/target/release/bundle/` (`macos/Prospector's
+Compass.app` + `dmg/Prospector's Compass_*.dmg`). Drag the `.app` to /Applications.
+- **Do NOT double-click `target/debug/app`** — that's the raw dev binary: it shows a generic
+  icon and loads the dev server (`:5173`), so clicked on its own it's blank. Use the release
+  `.app`, or `npm run tauri dev`.
+- The release app finds `docker` by absolute path (`/opt/homebrew/bin`, `/usr/local/bin`), so a
+  Finder launch under a minimal `PATH` still starts the stack (`docker_bin()` in `lib.rs`).
+- **Still machine-local:** the release app runs `docker compose` from the repo path baked in at
+  compile (`CARGO_MANIFEST_DIR`). It works on THIS Mac (repo + Docker present). A true
+  fresh-machine distributable (bundle the compose file + backend image + a DB seed as app
+  resources, `docker load`/`pg_restore` on first run) is the remaining Phase 3b work (Stage 3b–d).
 
 - **Startup orchestration** lives in `frontend/src-tauri/src/lib.rs` (`run()` setup):
   1. `docker compose up -d` from the repo root (idempotent; brings up Postgres :1776 +
