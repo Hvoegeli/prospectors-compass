@@ -44,6 +44,14 @@ When an error or fix takes more than 5 minutes to diagnose, append an entry belo
 **Fix:** Added retry-with-backoff to `storage.download_file` (mirrors the ArcGIS fetcher): catch `httpx.TransportError` (incl. `RemoteProtocolError`) + 5xx, retry up to 4× with linear backoff; 4xx not retried; still atomic via `.part` + rename. Hand-cached the one file via curl to unblock immediately.
 **Prevention:** Any streaming download of large public files (TIGER, 3DEP DEM) must retry transient drops — a single flake shouldn't abort a long ingest. The ArcGIS ingester already had this; the file downloader was the gap.
 
+### 2026-07-06 — Phone app "no longer available" in the field (expired free-account signing)
+
+**Error:** iOS on launch: "'Compass Field' is no longer available." **Discovered 2026-07-03** in the field (camping, no signal) — the app would not open. A later rebuild also failed: `xcodebuild` → "Provisioning profile 'iOS Team Provisioning Profile: com.hvoegeli.compassfield' **expired on Jul 2, 2026**", then after clearing it → "No profiles were found… To enable automatic signing, pass `-allowProvisioningUpdates`."
+**Context:** The mobile app is a local `expo run:ios` development build (no EAS), signed with a **free personal Apple account** (team UVRU3VR5QL / "William Voegeli"). Diagnosed + fixed **2026-07-06**.
+**Root cause:** Free Apple accounts get a development provisioning profile that **expires after 7 days**. It expired Jul 2; iOS then disabled the app, and re-enabling requires connectivity — impossible off-grid. This is an iOS signing-lifecycle constraint, not a code bug. Separately, `expo run:ios` can't recover once expired because it doesn't pass `-allowProvisioningUpdates`, so xcodebuild refuses to mint a replacement.
+**Fix:** `xcodebuild -allowProvisioningUpdates … build` mints a fresh 7-day profile (new expiry Jul 14), then `xcrun devicectl device install app` installs it. Wrapped as `mobile/scripts/reinstall-phone.sh` (`npm run reinstall:phone`) so it's one command.
+**Prevention:** Run `npm run reinstall:phone` **before every trip** for a fresh 7-day window (covers trips ≤7 days). The only durable fix for a single trip **longer than 7 days** off-grid is a paid Apple Developer Program membership (1-year profiles). Note: "offline-first" covers the app's *function* (maps/GPS/data), NOT the install's *signing lifetime* — those are separate, and the 7-day fuse must be managed on its own.
+
 ## Common Issues to Watch For
 
 ### LangGraph
