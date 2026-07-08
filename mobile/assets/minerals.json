@@ -1,0 +1,618 @@
+{
+  "format": "prospectors-compass.mineral-key",
+  "version": 1,
+  "note": "Curated non-AI dichotomous-key dataset for CO / Rocky Mountain prospecting. Property values are standard mineralogy references. hardness is [minMohs, maxMohs]. streak/heft/magnetic are single values; luster/color are lists. target_tags map to engine targets for the soft region bias. Optional 'hazard' flags toxic minerals (arsenic, lead) — always surfaced, even when the ID is uncertain.",
+  "minerals": [
+    {
+      "id": "gold",
+      "name": "Native gold",
+      "aliases": ["placer gold", "lode gold"],
+      "hardness": [2.5, 3],
+      "streak": "gold-yellow",
+      "luster": ["metallic"],
+      "color": ["gold", "yellow"],
+      "magnetic": "no",
+      "heft": "very_heavy",
+      "cleavage": "none",
+      "habit": "flakes, nuggets, dendritic",
+      "field_tests": [
+        "Malleable: dents/flattens with a pin, never shatters (pyrite & mica are brittle and crumble).",
+        "Streak stays bright gold (pyrite streaks greenish-black).",
+        "Very heavy — pans to the bottom; noticeably heavier than fool's gold.",
+        "Color unchanged in shade (pyrite/mica lose their 'gold' look out of direct sun)."
+      ],
+      "target_tags": ["au_placer", "au_lode"],
+      "note": "The real thing. Soft, dense, malleable, and gold in any light — the opposite of brittle, lighter pyrite/mica."
+    },
+    {
+      "id": "pyrite",
+      "name": "Pyrite",
+      "aliases": ["iron pyrite", "fool's gold"],
+      "hardness": [6, 6.5],
+      "streak": "greenish-black",
+      "luster": ["metallic"],
+      "color": ["brass", "gold"],
+      "magnetic": "no",
+      "heft": "heavy",
+      "cleavage": "none",
+      "habit": "cubes, pyritohedra, striated faces",
+      "field_tests": [
+        "Streak test: greenish-black to brownish-black (gold streaks gold; hematite streaks red-brown).",
+        "Hard — H≈6, scratches glass; gold and galena are soft (a knife scratches them).",
+        "Brittle: shatters/crumbles under a hammer (gold flattens).",
+        "Often in crisp cubes with striated faces."
+      ],
+      "target_tags": ["au_lode"],
+      "note": "Classic 'fool's gold': brassy and metallic, but hard, brittle, and it leaves a dark green-black streak."
+    },
+    {
+      "id": "chalcopyrite",
+      "name": "Chalcopyrite",
+      "aliases": ["copper pyrite"],
+      "hardness": [3.5, 4],
+      "streak": "greenish-black",
+      "luster": ["metallic"],
+      "color": ["gold", "brass", "green", "blue"],
+      "magnetic": "no",
+      "heft": "heavy",
+      "cleavage": "poor",
+      "habit": "massive, tarnished iridescent",
+      "field_tests": [
+        "Softer than pyrite (H≈3.5–4): a knife scratches it; pyrite (H6) resists.",
+        "Often tarnishes to iridescent blue/purple/green ('peacock' colors).",
+        "Streak greenish-black."
+      ],
+      "target_tags": ["au_lode"],
+      "note": "A copper-iron sulfide — brassier and softer than pyrite, frequently with peacock tarnish."
+    },
+    {
+      "id": "galena",
+      "name": "Galena",
+      "aliases": ["lead ore", "silver-lead"],
+      "hardness": [2.5, 2.75],
+      "streak": "lead-gray",
+      "luster": ["metallic"],
+      "color": ["silver", "gray"],
+      "magnetic": "no",
+      "heft": "very_heavy",
+      "cleavage": "perfect cubic",
+      "habit": "cubes, cleaves into little cubes",
+      "field_tests": [
+        "Breaks into perfect little cubes (cubic cleavage) — diagnostic.",
+        "Surprisingly heavy for its size (lead); very_heavy.",
+        "Soft: H≈2.5, a knife scratches it easily.",
+        "Bright silver-gray on a fresh break, dulls to gray."
+      ],
+      "target_tags": ["silver"],
+      "hazard": "Lead mineral — wash hands after handling, don't grind or breathe the dust, and keep it away from food.",
+      "note": "Lead sulfide, often silver-bearing. The perfect cubic cleavage + heavy heft + softness are the tell."
+    },
+    {
+      "id": "hematite",
+      "name": "Hematite",
+      "aliases": ["specularite", "red iron ore"],
+      "hardness": [5, 6.5],
+      "streak": "red-brown",
+      "luster": ["metallic", "dull"],
+      "color": ["red", "brown", "gray", "black"],
+      "magnetic": "no",
+      "heft": "heavy",
+      "cleavage": "none",
+      "habit": "massive, botryoidal, micaceous (specular)",
+      "field_tests": [
+        "Streak test: RED-BROWN streak is diagnostic — even on a silvery/black 'specular' piece (pyrite = greenish-black; magnetite = black).",
+        "Not magnetic (or barely) — magnetite is strongly magnetic.",
+        "Often reddish and found with/around iron sulfides like pyrite (oxidation product)."
+      ],
+      "target_tags": [],
+      "note": "Iron oxide. The classic 'red mineral found with pyrite'. Whatever the surface color, it always leaves a red-brown streak."
+    },
+    {
+      "id": "magnetite",
+      "name": "Magnetite",
+      "aliases": ["lodestone", "black iron ore"],
+      "hardness": [5.5, 6.5],
+      "streak": "black",
+      "luster": ["metallic", "submetallic"],
+      "color": ["black"],
+      "magnetic": "strong",
+      "heft": "heavy",
+      "cleavage": "none",
+      "habit": "octahedra, granular, heavy black sand",
+      "field_tests": [
+        "Strongly magnetic — a magnet grabs it (diagnostic vs hematite/other black minerals).",
+        "Black streak (hematite = red-brown).",
+        "Common as heavy black sand in a gold pan."
+      ],
+      "target_tags": [],
+      "note": "Iron oxide, strongly magnetic. The heavy black sand in your pan — a pathfinder, not a target."
+    },
+    {
+      "id": "quartz",
+      "name": "Quartz",
+      "aliases": ["rock crystal", "smoky quartz", "amethyst", "milky quartz"],
+      "hardness": [7, 7],
+      "streak": "white",
+      "luster": ["vitreous"],
+      "color": ["clear", "white", "purple", "brown", "gray", "pink"],
+      "magnetic": "no",
+      "heft": "medium",
+      "cleavage": "none",
+      "habit": "six-sided prisms with pointed ends, conchoidal fracture",
+      "field_tests": [
+        "Hard: H7, scratches glass and steel; won't be scratched by a knife.",
+        "No cleavage — breaks with curved (conchoidal) surfaces.",
+        "Glassy luster; six-sided crystals ending in a point.",
+        "The common host for gold veins — worth checking quartz float."
+      ],
+      "target_tags": ["au_lode"],
+      "note": "The most common vein/gangue mineral and a gold host. Glassy, very hard, six-sided crystals, no cleavage."
+    },
+    {
+      "id": "muscovite",
+      "name": "Muscovite mica",
+      "aliases": ["white mica", "isinglass"],
+      "hardness": [2, 2.5],
+      "streak": "white",
+      "luster": ["pearly", "vitreous"],
+      "color": ["clear", "silver", "brown", "yellow"],
+      "magnetic": "no",
+      "heft": "light",
+      "cleavage": "perfect basal (peels in sheets)",
+      "habit": "thin flexible sheets, 'books'",
+      "field_tests": [
+        "Peels into thin, flexible, transparent sheets (diagnostic).",
+        "Very soft (H≈2.5) and light.",
+        "Flakes glitter gold in the sun in a creek ('fool's gold') but crumble to powder and are weightless — real gold flattens and sinks."
+      ],
+      "target_tags": ["pegmatite"],
+      "note": "The other 'fool's gold' — glittery flakes in streams. Splits into springy sheets; far too light and brittle to be gold."
+    },
+    {
+      "id": "biotite",
+      "name": "Biotite mica",
+      "aliases": ["black mica"],
+      "hardness": [2.5, 3],
+      "streak": "white",
+      "luster": ["pearly", "vitreous"],
+      "color": ["black", "brown"],
+      "magnetic": "no",
+      "heft": "light",
+      "cleavage": "perfect basal (peels in sheets)",
+      "habit": "thin flexible dark sheets, 'books'",
+      "field_tests": [
+        "Peels into thin flexible sheets like muscovite, but dark brown/black.",
+        "Very soft (H≈2.5–3), light."
+      ],
+      "target_tags": ["pegmatite"],
+      "note": "Dark mica; common in granite and pegmatite. Splits into flexible sheets."
+    },
+    {
+      "id": "feldspar",
+      "name": "Feldspar",
+      "aliases": ["orthoclase", "microcline", "amazonite", "plagioclase"],
+      "hardness": [6, 6.5],
+      "streak": "white",
+      "luster": ["vitreous", "pearly"],
+      "color": ["white", "pink", "green", "clear"],
+      "magnetic": "no",
+      "heft": "medium",
+      "cleavage": "two directions near 90°",
+      "habit": "blocky crystals, flat cleavage faces",
+      "field_tests": [
+        "Two cleavage directions meeting near a right angle — flat, step-like reflective faces (quartz has none).",
+        "Hard (H6): scratches glass but is scratched by quartz.",
+        "Green variety (amazonite) is a pegmatite indicator."
+      ],
+      "target_tags": ["pegmatite"],
+      "note": "The most abundant crustal mineral. Blocky with flat cleavage faces; green amazonite flags pegmatites."
+    },
+    {
+      "id": "fluorite",
+      "name": "Fluorite",
+      "aliases": ["fluorspar"],
+      "hardness": [4, 4],
+      "streak": "white",
+      "luster": ["vitreous"],
+      "color": ["purple", "green", "blue", "yellow", "clear"],
+      "magnetic": "no",
+      "heft": "medium",
+      "cleavage": "perfect octahedral (breaks into triangles)",
+      "habit": "cubes, octahedra",
+      "field_tests": [
+        "Softer than glass (H4): a knife scratches it; won't scratch glass.",
+        "Often cubic crystals but cleaves into octahedra (triangular faces).",
+        "Vivid purple/green/blue; may glow (fluoresce) under UV."
+      ],
+      "target_tags": ["fluorite"],
+      "note": "Colorful and soft. Cubes that cleave to octahedra; too soft to scratch glass (separates it from quartz/beryl)."
+    },
+    {
+      "id": "beryl",
+      "name": "Beryl",
+      "aliases": ["aquamarine", "emerald", "heliodor", "morganite"],
+      "hardness": [7.5, 8],
+      "streak": "white",
+      "luster": ["vitreous"],
+      "color": ["blue", "green", "yellow", "pink", "clear"],
+      "magnetic": "no",
+      "heft": "medium",
+      "cleavage": "poor",
+      "habit": "six-sided prisms (often flat-topped)",
+      "field_tests": [
+        "Very hard (H≈7.5–8): scratches quartz.",
+        "Six-sided prisms, often blue-green (aquamarine); pegmatite gem.",
+        "Harder and usually flatter-topped than quartz points."
+      ],
+      "target_tags": ["pegmatite"],
+      "note": "Pegmatite gem (aquamarine/emerald). Six-sided like quartz but harder and typically blue-green."
+    },
+    {
+      "id": "topaz",
+      "name": "Topaz",
+      "aliases": [],
+      "hardness": [8, 8],
+      "streak": "white",
+      "luster": ["vitreous"],
+      "color": ["clear", "yellow", "blue", "pink"],
+      "magnetic": "no",
+      "heft": "medium",
+      "cleavage": "perfect basal",
+      "habit": "prismatic crystals",
+      "field_tests": [
+        "Extremely hard (H8): scratches quartz and beryl.",
+        "One perfect cleavage direction (basal).",
+        "Often colorless, pale blue, or sherry-yellow; a pegmatite gem."
+      ],
+      "target_tags": ["pegmatite"],
+      "note": "Very hard pegmatite gem; a single perfect cleavage sets it apart from beryl/quartz."
+    },
+    {
+      "id": "corundum",
+      "name": "Corundum",
+      "aliases": ["ruby", "sapphire"],
+      "hardness": [9, 9],
+      "streak": "white",
+      "luster": ["vitreous", "adamantine"],
+      "color": ["red", "blue", "gray", "brown"],
+      "magnetic": "no",
+      "heft": "heavy",
+      "cleavage": "none",
+      "habit": "barrel-shaped hexagonal crystals",
+      "field_tests": [
+        "Hardness 9 — scratches everything but diamond; nothing common scratches it.",
+        "Dense for a gem; barrel-shaped hexagonal crystals.",
+        "Red = ruby, blue = sapphire."
+      ],
+      "target_tags": ["corundum"],
+      "note": "Ruby/sapphire. Second only to diamond in hardness — a scratch test against quartz/topaz is decisive."
+    },
+    {
+      "id": "garnet",
+      "name": "Garnet",
+      "aliases": ["almandine", "pyrope"],
+      "hardness": [6.5, 7.5],
+      "streak": "white",
+      "luster": ["vitreous"],
+      "color": ["red", "brown", "black", "green"],
+      "magnetic": "no",
+      "heft": "medium",
+      "cleavage": "none",
+      "habit": "12- or 24-sided rounded crystals",
+      "field_tests": [
+        "Well-formed many-sided (dodecahedral) crystals, no cleavage.",
+        "Hard (H≈7): scratches glass.",
+        "Deep red-brown; common in metamorphic rock and as a heavy-mineral in pans."
+      ],
+      "target_tags": [],
+      "note": "Common metamorphic gem mineral; rounded many-faced crystals, glassy, hard, usually red."
+    },
+    {
+      "id": "sphalerite",
+      "name": "Sphalerite",
+      "aliases": ["zinc blende"],
+      "hardness": [3.5, 4],
+      "streak": "yellow-brown",
+      "luster": ["resinous", "submetallic"],
+      "color": ["brown", "black", "yellow", "red"],
+      "magnetic": "no",
+      "heft": "heavy",
+      "cleavage": "perfect (six directions)",
+      "habit": "tetrahedra, cleavable masses",
+      "field_tests": [
+        "Resinous/greasy luster (looks like hardened tree sap) — distinctive.",
+        "Pale yellow-brown streak.",
+        "Soft (H≈3.5–4); often with galena in silver-lead-zinc ore."
+      ],
+      "target_tags": ["silver"],
+      "note": "Zinc sulfide, a silver-ore companion to galena. Resinous luster + yellow-brown streak are the tells."
+    },
+    {
+      "id": "barite",
+      "name": "Barite",
+      "aliases": ["barytes", "heavy spar"],
+      "hardness": [3, 3.5],
+      "streak": "white",
+      "luster": ["vitreous", "pearly"],
+      "color": ["white", "clear", "yellow"],
+      "magnetic": "no",
+      "heft": "heavy",
+      "cleavage": "good",
+      "habit": "tabular blades, 'desert roses'",
+      "field_tests": [
+        "Surprisingly heavy for a pale, non-metallic mineral (barium) — the giveaway.",
+        "Soft (H≈3): a knife scratches it.",
+        "Tabular/bladed crystals; a gangue mineral in many veins."
+      ],
+      "target_tags": [],
+      "note": "A white/clear mineral that is oddly heavy — that heft on a non-metallic is diagnostic."
+    },
+    {
+      "id": "calcite",
+      "name": "Calcite",
+      "aliases": ["calcspar"],
+      "hardness": [3, 3],
+      "streak": "white",
+      "luster": ["vitreous"],
+      "color": ["white", "clear", "yellow"],
+      "magnetic": "no",
+      "heft": "medium",
+      "cleavage": "perfect rhombohedral",
+      "habit": "rhombs, scalenohedra",
+      "field_tests": [
+        "Fizzes in dilute acid (a drop of vinegar bubbles) — diagnostic.",
+        "Soft (H3): a knife scratches it easily.",
+        "Cleaves into rhombs (leaning cubes); clear pieces double an image."
+      ],
+      "target_tags": [],
+      "note": "Common vein/gangue carbonate. The acid fizz + rhombic cleavage are unmistakable."
+    },
+    {
+      "id": "rhodochrosite",
+      "name": "Rhodochrosite",
+      "aliases": [],
+      "hardness": [3.5, 4],
+      "streak": "white",
+      "luster": ["vitreous"],
+      "color": ["pink", "red"],
+      "magnetic": "no",
+      "heft": "medium",
+      "cleavage": "perfect rhombohedral",
+      "habit": "rhombs, banded masses",
+      "field_tests": [
+        "Rose-pink to red; soft (H≈3.5–4).",
+        "Rhombohedral cleavage; may fizz weakly in warm acid.",
+        "Colorado's state mineral — famous from Sweet Home Mine near Alma."
+      ],
+      "target_tags": ["silver"],
+      "note": "Pink manganese carbonate — a Colorado specialty, found with silver-lead ores."
+    },
+    {
+      "id": "cuprite",
+      "name": "Cuprite",
+      "aliases": ["ruby copper"],
+      "hardness": [3.5, 4],
+      "streak": "brownish-red",
+      "luster": ["adamantine", "submetallic"],
+      "color": ["red"],
+      "magnetic": "no",
+      "heft": "heavy",
+      "cleavage": "poor",
+      "habit": "octahedra, earthy masses",
+      "field_tests": [
+        "Deep red, often with green malachite or native copper nearby.",
+        "Brownish-red streak (hematite = red-brown too, but cuprite is heavier and sits with copper minerals).",
+        "Soft-ish (H≈3.5–4)."
+      ],
+      "target_tags": [],
+      "note": "A red copper oxide. Like hematite it's red, but it travels with copper minerals (malachite/azurite) not iron sulfides."
+    },
+    {
+      "id": "realgar",
+      "name": "Realgar",
+      "aliases": ["ruby sulphur", "red arsenic"],
+      "hardness": [1.5, 2],
+      "streak": "orange-red",
+      "luster": ["resinous", "greasy"],
+      "color": ["red", "orange"],
+      "magnetic": "no",
+      "heft": "medium",
+      "cleavage": "good, one direction",
+      "habit": "granular, crusts, short prisms",
+      "hazard": "ARSENIC — toxic. Don't lick or taste it, don't breathe the dust, wash hands after handling, and don't carry it loose with food/water. Realgar also crumbles to a toxic yellow-orange powder in sunlight, so store it in the dark.",
+      "field_tests": [
+        "Bright red to orange-red, VERY soft (H1.5–2 — a copper penny scratches it).",
+        "Resinous/greasy luster; orange-red streak (hematite streaks red-brown and is far harder).",
+        "Medium heft — much lighter than cinnabar (mercury), which is very heavy.",
+        "Classically sits WITH pyrite and yellow orpiment in low-temperature / hot-spring veins.",
+        "SAFETY: arsenic mineral — handle minimally, wash hands, don't inhale dust."
+      ],
+      "target_tags": ["au_lode"],
+      "note": "Bright-red arsenic sulfide, soft and resinous, found with pyrite. Arsenic is a known gold pathfinder — but it's TOXIC, so handle with care."
+    },
+    {
+      "id": "orpiment",
+      "name": "Orpiment",
+      "aliases": ["yellow arsenic"],
+      "hardness": [1.5, 2],
+      "streak": "pale yellow",
+      "luster": ["resinous", "pearly"],
+      "color": ["yellow", "orange"],
+      "magnetic": "no",
+      "heft": "medium",
+      "cleavage": "perfect, one direction (flexible flakes)",
+      "habit": "foliated, columnar, crusts",
+      "hazard": "ARSENIC — toxic. Same care as realgar: no tasting, avoid the dust, wash hands after handling.",
+      "field_tests": [
+        "Lemon to golden-yellow, very soft (H1.5–2), pearly/resinous; peels into flexible flakes.",
+        "Pale yellow streak.",
+        "Realgar's constant yellow companion; found with realgar + pyrite.",
+        "SAFETY: arsenic mineral — handle minimally."
+      ],
+      "target_tags": ["au_lode"],
+      "note": "Golden-yellow arsenic sulfide, realgar's twin. Toxic (arsenic)."
+    },
+    {
+      "id": "cinnabar",
+      "name": "Cinnabar",
+      "aliases": ["vermilion", "mercury ore"],
+      "hardness": [2, 2.5],
+      "streak": "scarlet",
+      "luster": ["adamantine", "dull"],
+      "color": ["red"],
+      "magnetic": "no",
+      "heft": "very_heavy",
+      "cleavage": "perfect prismatic",
+      "habit": "granular, crusts, rhombohedral crystals",
+      "hazard": "MERCURY — toxic. Never heat it (releases mercury vapor), don't breathe the dust, wash hands after handling, and keep it away from food. Handle sealed if possible.",
+      "field_tests": [
+        "Bright red / vermilion with a red (scarlet) streak — diagnostic.",
+        "VERY heavy for its size (mercury) — the heft separates it from realgar (medium) and hematite.",
+        "Soft (H2–2.5); adamantine (diamond-like) sparkle on fresh crystals, dull when earthy.",
+        "Found in hot-spring / low-temperature veins with pyrite, realgar, and quartz.",
+        "SAFETY: mercury mineral — don't heat, don't inhale dust, wash hands."
+      ],
+      "target_tags": [],
+      "note": "Red mercury sulfide. Like realgar it's red and sits with pyrite, but it's much heavier (mercury) and softer-streaking scarlet. TOXIC (mercury)."
+    },
+    {
+      "id": "malachite",
+      "name": "Malachite",
+      "aliases": [],
+      "hardness": [3.5, 4],
+      "streak": "green",
+      "luster": ["dull", "silky"],
+      "color": ["green"],
+      "magnetic": "no",
+      "heft": "medium",
+      "cleavage": "good",
+      "habit": "botryoidal, banded, crusts",
+      "field_tests": [
+        "Bright green; green streak (diagnostic).",
+        "Often banded/botryoidal crusts; a copper indicator.",
+        "May fizz in acid (a carbonate)."
+      ],
+      "target_tags": [],
+      "note": "Green copper carbonate — a reliable 'copper is here' pathfinder, often with blue azurite."
+    },
+    {
+      "id": "azurite",
+      "name": "Azurite",
+      "aliases": [],
+      "hardness": [3.5, 4],
+      "streak": "blue",
+      "luster": ["vitreous", "dull"],
+      "color": ["blue"],
+      "magnetic": "no",
+      "heft": "medium",
+      "cleavage": "good",
+      "habit": "crusts, prismatic crystals",
+      "field_tests": [
+        "Deep azure blue with a blue streak (diagnostic).",
+        "A copper indicator; usually alongside green malachite."
+      ],
+      "target_tags": [],
+      "note": "Blue copper carbonate; pairs with malachite as a copper pathfinder."
+    },
+    {
+      "id": "silver",
+      "name": "Native silver",
+      "aliases": [],
+      "hardness": [2.5, 3],
+      "streak": "silver-white",
+      "luster": ["metallic"],
+      "color": ["silver"],
+      "magnetic": "no",
+      "heft": "very_heavy",
+      "cleavage": "none",
+      "habit": "wires, dendrites, plates",
+      "field_tests": [
+        "Malleable (dents, doesn't shatter) and very heavy; tarnishes dark.",
+        "Bright silver-white on a fresh scratch.",
+        "Often wiry/dendritic; found with galena/acanthite."
+      ],
+      "target_tags": ["silver"],
+      "note": "Rare native metal — soft, dense, malleable, tarnishes black. Distinguished from galena by no cubic cleavage."
+    },
+    {
+      "id": "molybdenite",
+      "name": "Molybdenite",
+      "aliases": [],
+      "hardness": [1, 1.5],
+      "streak": "greenish-gray",
+      "luster": ["metallic"],
+      "color": ["silver", "gray"],
+      "magnetic": "no",
+      "heft": "medium",
+      "cleavage": "perfect basal (flexible sheets)",
+      "habit": "foliated, flexible flakes",
+      "field_tests": [
+        "Extremely soft (H1–1.5) and greasy — marks paper like a pencil.",
+        "Bluish silver-gray; leaves a greenish-gray streak (graphite = gray-black).",
+        "Colorado's Climax/Henderson are world molybdenum mines."
+      ],
+      "target_tags": [],
+      "note": "Molybdenum ore. Looks like graphite but with a bluer, greenish-gray streak; greasy, very soft, flexible flakes."
+    },
+    {
+      "id": "graphite",
+      "name": "Graphite",
+      "aliases": [],
+      "hardness": [1, 2],
+      "streak": "gray-black",
+      "luster": ["metallic", "dull"],
+      "color": ["gray", "black"],
+      "magnetic": "no",
+      "heft": "light",
+      "cleavage": "perfect basal",
+      "habit": "foliated, earthy masses",
+      "field_tests": [
+        "Very soft, greasy, marks paper (pencil 'lead').",
+        "Gray-black streak; lighter than molybdenite and grayer.",
+        "Light for a dark metallic-looking mineral."
+      ],
+      "target_tags": [],
+      "note": "Soft, greasy carbon. Distinguished from molybdenite by a gray-black (not greenish) streak and lighter heft."
+    },
+    {
+      "id": "limonite",
+      "name": "Limonite / goethite",
+      "aliases": ["gossan", "bog iron", "iron oxide"],
+      "hardness": [4, 5.5],
+      "streak": "yellow-brown",
+      "luster": ["dull", "earthy"],
+      "color": ["brown", "yellow", "red"],
+      "magnetic": "no",
+      "heft": "medium",
+      "cleavage": "none",
+      "habit": "earthy crusts, botryoidal, boxwork",
+      "field_tests": [
+        "Yellow-brown streak (hematite = red-brown; both are rusty iron oxides).",
+        "Dull/earthy rusty crusts — the orange-brown 'gossan' capping oxidized sulfides.",
+        "A pathfinder: rusty limonite often marks where pyrite/other sulfides weathered."
+      ],
+      "target_tags": ["au_lode"],
+      "note": "Rusty iron-oxide weathering crust. A gossan of limonite over a vein is a classic 'dig here' sign of oxidized sulfides."
+    },
+    {
+      "id": "chalcocite",
+      "name": "Chalcocite",
+      "aliases": ["copper glance"],
+      "hardness": [2.5, 3],
+      "streak": "gray-black",
+      "luster": ["metallic"],
+      "color": ["gray", "black"],
+      "magnetic": "no",
+      "heft": "heavy",
+      "cleavage": "poor",
+      "habit": "massive, sooty coatings",
+      "field_tests": [
+        "Dark lead-gray, soft (H≈2.5–3); a knife cuts it and it's slightly sectile.",
+        "A rich copper ore; often with malachite/azurite staining.",
+        "Gray-black streak."
+      ],
+      "target_tags": [],
+      "note": "A dark-gray copper sulfide ore; soft and sectile, usually with green/blue copper stains."
+    }
+  ]
+}

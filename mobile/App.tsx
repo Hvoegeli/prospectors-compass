@@ -44,6 +44,7 @@ import {
   type Waypoint,
 } from './src/bundle'
 import { appendFind, buildFindsBundle, deleteFind, deleteFindsForTrip, findsFC, loadFinds, photoUri, savePhoto, type Find } from './src/finds'
+import { PROPERTIES, rankCandidates, type Observed } from './src/identification'
 import { addPin, deletePin, EMPTY_ANNOTATIONS, loadAnnotations, pinsFC, setNote, type Annotations, type DroppedPin } from './src/annotations'
 import { bearingDegrees, cardinal16, distanceMeters, formatDistanceImperial } from './src/geo'
 import * as Sharing from 'expo-sharing'
@@ -156,7 +157,7 @@ const OFFLINE_STYLE: StyleSpecification = {
 }
 
 type Fix = { lon: number; lat: number; accuracy: number | null }
-type Panel = 'trip' | 'layers' | 'logFind' | null
+type Panel = 'trip' | 'layers' | 'logFind' | 'identify' | null
 // Which overlays are drawn — driven by the Layers panel toggles.
 type LayerVis = { basemap: boolean; scored: boolean; waypoints: boolean; finds: boolean; contours: boolean; land: boolean }
 
@@ -1047,6 +1048,7 @@ export default function App() {
       <View style={styles.bottomBar}>
         <BarButton icon="📋" label="Trip" active={panel === 'trip'} onPress={() => openPanel('trip')} />
         <BarButton icon="🗂️" label="Layers" active={panel === 'layers'} onPress={() => openPanel('layers')} />
+        <BarButton icon="🔬" label="Identify" active={panel === 'identify'} onPress={() => openPanel('identify')} />
         <BarButton
           icon="＋"
           label="Log find"
@@ -1112,7 +1114,13 @@ export default function App() {
         <View style={[styles.panel, panel === 'logFind' && kbHeight > 0 && { bottom: kbHeight + 12 }]}>
           <View style={styles.panelHeader}>
             <Text style={styles.panelTitle}>
-              {panel === 'trip' ? manifest.trip.name : panel === 'layers' ? 'Map layers' : 'Log a find'}
+              {panel === 'trip'
+                ? manifest.trip.name
+                : panel === 'layers'
+                  ? 'Map layers'
+                  : panel === 'identify'
+                    ? 'Identify a specimen'
+                    : 'Log a find'}
             </Text>
             <TouchableOpacity
               onPress={() => {
@@ -1269,6 +1277,8 @@ export default function App() {
                 <Text style={styles.panelMeta}>This bundle carried no basemap — only the scored areas and spots are shown.</Text>
               )}
             </ScrollView>
+          ) : panel === 'identify' ? (
+            <IdentifyPanel tripTarget={manifest.scored_areas.target} />
           ) : (
             <View>
               {fix ? (
@@ -1579,6 +1589,94 @@ function PhotoThumb({ uri, onPress }: { uri: string; onPress: () => void }) {
   )
 }
 
+// Offline specimen ID: pick observed properties → ranked candidates + field tests.
+// Never names a specimen below the confidence threshold (shows field tests instead),
+// and always surfaces toxic-mineral hazards. `tripTarget` softly biases toward the
+// trip's resource. All logic lives in src/identification.ts.
+function IdentifyPanel({ tripTarget }: { tripTarget: string | null }) {
+  const [observed, setObserved] = useState<Observed>({})
+  const result = useMemo(() => rankCandidates(observed, { tripTarget }), [observed, tripTarget])
+  const named = !result.namingLocked ? result.candidates[0] : undefined
+
+  return (
+    <ScrollView style={styles.identifyScroll} keyboardShouldPersistTaps="handled">
+      <Text style={styles.panelMeta}>
+        Tap what you observe — streak and hardness tell the most. The guide won’t name a
+        specimen it isn’t sure about; it’ll suggest field tests instead.
+      </Text>
+
+      {PROPERTIES.map((prop) => (
+        <View key={prop.key}>
+          <Text style={styles.formLabel}>{prop.label}</Text>
+          <View style={styles.kindRow}>
+            {prop.options.map((opt) => {
+              const on = observed[prop.key] === opt.id
+              return (
+                <TouchableOpacity
+                  key={opt.id}
+                  style={[styles.kindChip, on && styles.kindChipOn]}
+                  onPress={() =>
+                    setObserved((o) => ({ ...o, [prop.key]: on ? undefined : opt.id }))
+                  }
+                >
+                  <Text style={[styles.kindChipText, on && styles.kindChipTextOn]}>{opt.label}</Text>
+                </TouchableOpacity>
+              )
+            })}
+          </View>
+        </View>
+      ))}
+
+      {result.answeredCount > 0 && (
+        <View style={styles.idResult}>
+          <Text style={styles.idComment}>{result.comment}</Text>
+
+          {/* Safety first: always surface toxic candidates, named or not. */}
+          {result.hazards.map((h) => (
+            <Text key={h.id} style={styles.idHazard}>
+              ⚠️ {h.name}: {h.hazard}
+            </Text>
+          ))}
+
+          {named ? (
+            <View style={styles.idNamed}>
+              <Text style={styles.idName}>{named.mineral.name}</Text>
+              <Text style={styles.idConf}>{Math.round(result.confidence * 100)}% confidence</Text>
+              <Text style={styles.idNote}>{named.mineral.note}</Text>
+            </View>
+          ) : (
+            result.candidates.length > 0 && (
+              <View>
+                <Text style={styles.idSub}>Possibilities</Text>
+                {result.candidates.map((c) => (
+                  <Text key={c.mineral.id} style={styles.idCand}>
+                    • {c.mineral.name}
+                  </Text>
+                ))}
+              </View>
+            )
+          )}
+
+          {result.fieldTests.length > 0 && (
+            <View style={styles.idTests}>
+              <Text style={styles.idSub}>{named ? 'Confirm with' : 'Field tests to narrow it'}</Text>
+              {result.fieldTests.map((t, i) => (
+                <Text key={i} style={styles.idTest}>
+                  • {t}
+                </Text>
+              ))}
+            </View>
+          )}
+
+          <TouchableOpacity onPress={() => setObserved({})}>
+            <Text style={styles.idClear}>Clear observations</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+    </ScrollView>
+  )
+}
+
 const styles = StyleSheet.create({
   root: { flex: 1 },
   map: { flex: 1 },
@@ -1781,6 +1879,21 @@ const styles = StyleSheet.create({
   kindChipOn: { backgroundColor: 'rgba(52,211,153,0.2)', borderColor: '#34d399' },
   kindChipText: { color: '#cbd5e1', fontSize: 14, fontWeight: '600' },
   kindChipTextOn: { color: '#34d399' },
+
+  // Identify (specimen ID) panel
+  identifyScroll: { maxHeight: 360 },
+  idResult: { marginTop: 16, borderTopWidth: 1, borderTopColor: 'rgba(148,163,184,0.2)', paddingTop: 12 },
+  idComment: { color: '#e2e8f0', fontSize: 14, fontWeight: '700', marginBottom: 8, lineHeight: 19 },
+  idHazard: { color: '#fca5a5', backgroundColor: 'rgba(248,113,113,0.12)', borderWidth: 1, borderColor: 'rgba(248,113,113,0.35)', borderRadius: 8, padding: 8, fontSize: 12.5, lineHeight: 17, marginBottom: 8 },
+  idNamed: { marginBottom: 8 },
+  idName: { color: '#34d399', fontSize: 20, fontWeight: '800' },
+  idConf: { color: '#94a3b8', fontSize: 12, marginBottom: 4 },
+  idNote: { color: '#cbd5e1', fontSize: 13, lineHeight: 18 },
+  idSub: { color: '#cbd5e1', fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 10, marginBottom: 6 },
+  idCand: { color: '#e2e8f0', fontSize: 14, lineHeight: 20 },
+  idTests: { marginTop: 4 },
+  idTest: { color: '#cbd5e1', fontSize: 13, lineHeight: 19, marginBottom: 2 },
+  idClear: { color: '#60a5fa', fontSize: 13, marginTop: 14 },
   noteInput: { color: '#e2e8f0', fontSize: 15, backgroundColor: 'rgba(148,163,184,0.12)', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, minHeight: 64, textAlignVertical: 'top' },
   saveBtn: { backgroundColor: '#34d399', borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginTop: 16 },
   saveBtnText: { color: '#06281e', fontSize: 16, fontWeight: '700' },
