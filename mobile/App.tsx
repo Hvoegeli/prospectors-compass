@@ -1278,7 +1278,13 @@ export default function App() {
               )}
             </ScrollView>
           ) : panel === 'identify' ? (
-            <IdentifyPanel tripTarget={manifest.scored_areas.target} />
+            <IdentifyPanel
+              tripTarget={manifest.scored_areas.target}
+              onLogFind={(note) => {
+                setFindNote(note)
+                setPanel('logFind')
+              }}
+            />
           ) : (
             <View>
               {fix ? (
@@ -1593,10 +1599,26 @@ function PhotoThumb({ uri, onPress }: { uri: string; onPress: () => void }) {
 // Never names a specimen below the confidence threshold (shows field tests instead),
 // and always surfaces toxic-mineral hazards. `tripTarget` softly biases toward the
 // trip's resource. All logic lives in src/identification.ts.
-function IdentifyPanel({ tripTarget }: { tripTarget: string | null }) {
+function IdentifyPanel({
+  tripTarget,
+  onLogFind,
+}: {
+  tripTarget: string | null
+  onLogFind: (note: string) => void
+}) {
   const [observed, setObserved] = useState<Observed>({})
   const result = useMemo(() => rankCandidates(observed, { tripTarget }), [observed, tripTarget])
   const named = !result.namingLocked ? result.candidates[0] : undefined
+
+  // A note for the find log that honestly reflects the confidence + any hazard.
+  function findNoteFromResult(): string {
+    const haz = result.hazards.length
+      ? ` — ⚠️ ${result.hazards.map((h) => h.name).join(' / ')} (toxic, handle with care)`
+      : ''
+    if (named) return `Tentative ID: ${named.mineral.name} (${Math.round(result.confidence * 100)}%)${haz}`
+    const names = result.candidates.slice(0, 3).map((c) => c.mineral.name).join(' / ')
+    return names ? `Unconfirmed — possibly ${names}${haz}` : ''
+  }
 
   return (
     <ScrollView style={styles.identifyScroll} keyboardShouldPersistTaps="handled">
@@ -1668,6 +1690,11 @@ function IdentifyPanel({ tripTarget }: { tripTarget: string | null }) {
             </View>
           )}
 
+          {result.candidates.length > 0 && (
+            <TouchableOpacity style={styles.saveBtn} onPress={() => onLogFind(findNoteFromResult())}>
+              <Text style={styles.saveBtnText}>Log this as a find</Text>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity onPress={() => setObserved({})}>
             <Text style={styles.idClear}>Clear observations</Text>
           </TouchableOpacity>
