@@ -76,7 +76,7 @@ const STREAK_BUCKETS: Record<string, string[]> = {
   gray: ['lead-gray', 'gray', 'gray-black', 'greenish-gray'],
   black: ['black', 'gray-black', 'greenish-black'],
   greenish_black: ['greenish-black'],
-  reddish: ['red-brown', 'orange-red', 'scarlet', 'brownish-red'],
+  reddish: ['red-brown', 'orange-red', 'scarlet', 'brownish-red', 'copper-red'],
   gold: ['gold-yellow'],
   yellowish: ['pale yellow', 'yellow-brown', 'gold-yellow'],
   brown: ['yellow-brown', 'red-brown', 'brown'],

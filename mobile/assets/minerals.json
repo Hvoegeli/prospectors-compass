@@ -613,6 +613,439 @@
       ],
       "target_tags": [],
       "note": "A dark-gray copper sulfide ore; soft and sectile, usually with green/blue copper stains."
+    },
+    {
+      "id": "arsenopyrite",
+      "name": "Arsenopyrite",
+      "aliases": ["mispickel"],
+      "hardness": [5.5, 6],
+      "streak": "black",
+      "luster": ["metallic"],
+      "color": ["silver", "gray"],
+      "magnetic": "no",
+      "heft": "heavy",
+      "cleavage": "distinct, one direction",
+      "habit": "wedge-shaped prisms, striated, massive",
+      "hazard": "ARSENIC — toxic. Don't lick or taste it, don't breathe the dust, wash hands after handling, and don't carry it loose with food/water.",
+      "field_tests": [
+        "Silvery-white to steel-gray metallic, HARDER than most sulfides (H5.5–6, scratches glass; pyrite is similar but brassier, galena is soft).",
+        "Struck sharply with steel it can smell like garlic (arsenic) — diagnostic.",
+        "Black streak.",
+        "A prime GOLD pathfinder in lode veins — arsenic minerals often ride with gold.",
+        "SAFETY: arsenic mineral — handle minimally, wash hands, don't inhale dust."
+      ],
+      "target_tags": ["au_lode"],
+      "note": "Silver-gray arsenic-iron sulfide, harder than pyrite. A classic gold pathfinder — but TOXIC (arsenic), so handle with care."
+    },
+    {
+      "id": "stibnite",
+      "name": "Stibnite",
+      "aliases": ["antimonite", "antimony ore"],
+      "hardness": [2, 2],
+      "streak": "lead-gray",
+      "luster": ["metallic"],
+      "color": ["silver", "gray"],
+      "magnetic": "no",
+      "heft": "heavy",
+      "cleavage": "perfect, one direction (lengthwise)",
+      "habit": "long striated blades, radiating sprays, often bent",
+      "hazard": "Antimony mineral — wash hands after handling, avoid breathing the dust, and keep it away from food.",
+      "field_tests": [
+        "Long silvery-gray blades with lengthwise striations, often bent or radiating (diagnostic).",
+        "Very soft (H2) — a knife cuts it, a fingernail nearly scratches it.",
+        "Lead-gray streak; metallic.",
+        "Forms in low-temperature veins, sometimes with gold and quartz.",
+        "SAFETY: antimony mineral — handle minimally, wash hands."
+      ],
+      "target_tags": ["au_lode"],
+      "note": "Soft silvery-gray antimony sulfide in bladed sprays. A low-temperature vein mineral that can accompany gold."
+    },
+    {
+      "id": "bornite",
+      "name": "Bornite",
+      "aliases": ["peacock ore"],
+      "hardness": [3, 3.25],
+      "streak": "gray-black",
+      "luster": ["metallic"],
+      "color": ["brown", "purple", "blue"],
+      "magnetic": "no",
+      "heft": "heavy",
+      "cleavage": "poor",
+      "habit": "massive",
+      "field_tests": [
+        "A fresh surface is coppery bronze, but it quickly tarnishes to iridescent purple-blue 'peacock' colors (diagnostic).",
+        "Soft (H3): a knife scratches it.",
+        "Gray-black streak; a rich copper ore."
+      ],
+      "target_tags": [],
+      "note": "'Peacock ore' — a copper-iron sulfide that tarnishes to vivid purple-blue. Softer and more colorful than pyrite/chalcopyrite."
+    },
+    {
+      "id": "pyrrhotite",
+      "name": "Pyrrhotite",
+      "aliases": ["magnetic pyrite"],
+      "hardness": [3.5, 4.5],
+      "streak": "gray-black",
+      "luster": ["metallic"],
+      "color": ["brown"],
+      "magnetic": "weak",
+      "heft": "heavy",
+      "cleavage": "none",
+      "habit": "massive, tabular",
+      "field_tests": [
+        "Bronze-brown metallic and WEAKLY magnetic — a magnet tugs it, unusual for a sulfide (but weaker than magnetite, which snaps to the magnet).",
+        "Softer than pyrite (H≈4): a knife scratches it.",
+        "Gray-black streak."
+      ],
+      "target_tags": [],
+      "note": "The 'magnetic sulfide' — bronze iron sulfide that a magnet weakly tugs. Between pyrite and magnetite in both hardness and magnetism."
+    },
+    {
+      "id": "cassiterite",
+      "name": "Cassiterite",
+      "aliases": ["tin ore", "tinstone"],
+      "hardness": [6, 7],
+      "streak": "white",
+      "luster": ["adamantine", "submetallic"],
+      "color": ["brown", "black"],
+      "magnetic": "no",
+      "heft": "very_heavy",
+      "cleavage": "poor",
+      "habit": "stubby prisms, 'elbow' twins, waterworn pebbles",
+      "field_tests": [
+        "Very heavy for a non-metallic (SG≈7) — it concentrates in a pan like gold's heavy company.",
+        "Hard (H6–7): scratches glass.",
+        "Brown to black with a bright adamantine (near-gemmy) luster; near-white streak.",
+        "A tin mineral of pegmatites, greisens, and placers."
+      ],
+      "target_tags": ["pegmatite"],
+      "note": "Tin oxide — brown-black, glassy, and surprisingly heavy. A placer heavy-mineral that travels with tin-bearing pegmatites."
+    },
+    {
+      "id": "scheelite",
+      "name": "Scheelite",
+      "aliases": ["tungsten ore"],
+      "hardness": [4.5, 5],
+      "streak": "white",
+      "luster": ["vitreous", "adamantine"],
+      "color": ["white", "yellow", "brown"],
+      "magnetic": "no",
+      "heft": "very_heavy",
+      "cleavage": "distinct",
+      "habit": "pseudo-octahedra, granular",
+      "field_tests": [
+        "Pale (white/tan/amber) but surprisingly heavy (SG≈6) — the weight on a light-colored mineral is the tell.",
+        "Glows bright blue-white under short-wave UV (diagnostic).",
+        "Moderate hardness (H≈4.5–5): a knife just scratches it."
+      ],
+      "target_tags": [],
+      "note": "A pale, heavy tungsten mineral that fluoresces blue-white under UV — the classic way tungsten prospectors find it in the dark."
+    },
+    {
+      "id": "wolframite",
+      "name": "Wolframite",
+      "aliases": ["ferberite", "huebnerite", "tungsten ore"],
+      "hardness": [4, 4.5],
+      "streak": "brown",
+      "luster": ["submetallic", "metallic"],
+      "color": ["black", "brown"],
+      "magnetic": "no",
+      "heft": "very_heavy",
+      "cleavage": "perfect, one direction",
+      "habit": "bladed, tabular crystals",
+      "field_tests": [
+        "Heavy (SG≈7), dark brown to black with a submetallic luster and one perfect cleavage.",
+        "Reddish-brown to brownish-black streak.",
+        "Moderate hardness (H≈4–4.5).",
+        "A tungsten ore of quartz veins and greisens (Colorado's Boulder County tungsten belt)."
+      ],
+      "target_tags": [],
+      "note": "Dark, heavy tungsten ore with one perfect cleavage. Far heavier and darker than most minerals of similar hardness."
+    },
+    {
+      "id": "cerussite",
+      "name": "Cerussite",
+      "aliases": ["white lead ore"],
+      "hardness": [3, 3.5],
+      "streak": "white",
+      "luster": ["adamantine", "vitreous"],
+      "color": ["white", "gray", "clear"],
+      "magnetic": "no",
+      "heft": "very_heavy",
+      "cleavage": "good",
+      "habit": "tabular, twinned 'star' clusters, crusts",
+      "hazard": "Lead mineral — wash hands after handling, don't grind or breathe the dust, and keep it away from food.",
+      "field_tests": [
+        "White or gray but VERY heavy (lead) with a brilliant adamantine luster — the heft on a pale mineral is the giveaway.",
+        "Soft (H3–3.5): a knife scratches it.",
+        "Fizzes in warm dilute acid (a carbonate).",
+        "Forms as an oxidation crust on galena.",
+        "SAFETY: lead mineral — handle minimally, wash hands."
+      ],
+      "target_tags": ["silver"],
+      "note": "Lead carbonate — the heavy, brilliant white crust that forms as galena weathers. Often silver-bearing. TOXIC (lead)."
+    },
+    {
+      "id": "copper",
+      "name": "Native copper",
+      "aliases": ["float copper"],
+      "hardness": [2.5, 3],
+      "streak": "copper-red",
+      "luster": ["metallic"],
+      "color": ["red", "brown"],
+      "magnetic": "no",
+      "heft": "very_heavy",
+      "cleavage": "none",
+      "habit": "wires, plates, dendritic nuggets",
+      "field_tests": [
+        "Reddish metal, MALLEABLE (dents and bends, never shatters) and very heavy — like gold and silver, it's a native metal.",
+        "A fresh scratch is bright copper-red; the surface tarnishes brown, then green.",
+        "Often with malachite, azurite, or red cuprite nearby."
+      ],
+      "target_tags": [],
+      "note": "Native copper metal — soft, dense, malleable, reddish. Distinguished from copper sulfides by its metal (bendable, not brittle) behavior."
+    },
+    {
+      "id": "chrysocolla",
+      "name": "Chrysocolla",
+      "aliases": [],
+      "hardness": [2, 4],
+      "streak": "white",
+      "luster": ["vitreous", "dull"],
+      "color": ["blue", "green"],
+      "magnetic": "no",
+      "heft": "light",
+      "cleavage": "none",
+      "habit": "botryoidal crusts, earthy masses",
+      "field_tests": [
+        "Sky-blue to blue-green, waxy and often porous/light.",
+        "Soft and variable (H2–4): a knife scratches it easily; much softer than turquoise (H5–6).",
+        "A copper stain mineral — usually with malachite/azurite; white streak."
+      ],
+      "target_tags": [],
+      "note": "A soft blue-green copper mineral. Looks like turquoise but is much softer and lighter — a copper indicator, not a target."
+    },
+    {
+      "id": "turquoise",
+      "name": "Turquoise",
+      "aliases": [],
+      "hardness": [5, 6],
+      "streak": "white",
+      "luster": ["dull", "vitreous"],
+      "color": ["blue", "green"],
+      "magnetic": "no",
+      "heft": "medium",
+      "cleavage": "none",
+      "habit": "veinlets, nodules, crusts",
+      "field_tests": [
+        "Robin's-egg blue to green, waxy luster.",
+        "Harder than chrysocolla (H5–6): it resists a knife where chrysocolla doesn't.",
+        "A copper phosphate from arid, oxidized copper zones; white streak."
+      ],
+      "target_tags": [],
+      "note": "The blue-green gem copper mineral. Harder and denser than look-alike chrysocolla; forms in dry, weathered copper country."
+    },
+    {
+      "id": "tourmaline",
+      "name": "Tourmaline",
+      "aliases": ["schorl", "elbaite"],
+      "hardness": [7, 7.5],
+      "streak": "white",
+      "luster": ["vitreous"],
+      "color": ["black", "green", "pink", "blue"],
+      "magnetic": "no",
+      "heft": "medium",
+      "cleavage": "none",
+      "habit": "long striated prisms, rounded-triangular cross-section",
+      "field_tests": [
+        "Slender prisms with LENGTHWISE striations and a rounded-triangular cross-section (diagnostic).",
+        "Hard (H7+): scratches glass; no cleavage.",
+        "Black (schorl) is the common pegmatite type; pink/green/blue are the gem varieties."
+      ],
+      "target_tags": ["pegmatite"],
+      "note": "A hard pegmatite mineral in striated three-sided prisms. Black schorl is a pegmatite indicator; colored kinds are gems."
+    },
+    {
+      "id": "rhodonite",
+      "name": "Rhodonite",
+      "aliases": [],
+      "hardness": [5.5, 6.5],
+      "streak": "white",
+      "luster": ["vitreous"],
+      "color": ["pink", "red"],
+      "magnetic": "no",
+      "heft": "medium",
+      "cleavage": "good, two directions",
+      "habit": "massive, tabular; often veined with black",
+      "field_tests": [
+        "Rose-pink like rhodochrosite but MUCH harder (H6 — scratches glass; rhodochrosite is soft, H4).",
+        "Does NOT fizz in acid (rhodochrosite, a carbonate, may fizz).",
+        "Often laced with black manganese-oxide veinlets."
+      ],
+      "target_tags": [],
+      "note": "Pink manganese silicate — the hard, non-fizzing look-alike of pink rhodochrosite. The hardness + acid test separate them."
+    },
+    {
+      "id": "epidote",
+      "name": "Epidote",
+      "aliases": [],
+      "hardness": [6, 7],
+      "streak": "white",
+      "luster": ["vitreous"],
+      "color": ["green"],
+      "magnetic": "no",
+      "heft": "medium",
+      "cleavage": "one perfect",
+      "habit": "striated prisms, granular masses",
+      "field_tests": [
+        "Distinctive yellow-green 'pistachio' color (diagnostic).",
+        "Hard (H6–7): scratches glass.",
+        "Slender striated prisms; common in altered and metamorphic rock."
+      ],
+      "target_tags": [],
+      "note": "The pistachio-green metamorphic mineral. Its yellow-green color plus hardness set it apart from softer green copper minerals."
+    },
+    {
+      "id": "apatite",
+      "name": "Apatite",
+      "aliases": [],
+      "hardness": [5, 5],
+      "streak": "white",
+      "luster": ["vitreous"],
+      "color": ["green", "blue", "brown", "yellow"],
+      "magnetic": "no",
+      "heft": "medium",
+      "cleavage": "poor",
+      "habit": "hexagonal prisms",
+      "field_tests": [
+        "Six-sided prisms like beryl but SOFTER — H5, a knife scratches it and it barely marks glass (beryl H8 scratches quartz).",
+        "Green, blue, brown, or yellow; glassy.",
+        "It's the '5' on the Mohs hardness scale — a handy reference mineral."
+      ],
+      "target_tags": [],
+      "note": "The soft hexagonal-prism mineral — a beryl look-alike that a knife scratches. Marks the middle (H5) of the hardness scale."
+    },
+    {
+      "id": "zircon",
+      "name": "Zircon",
+      "aliases": [],
+      "hardness": [7.5, 7.5],
+      "streak": "white",
+      "luster": ["adamantine", "vitreous"],
+      "color": ["brown", "red", "clear"],
+      "magnetic": "no",
+      "heft": "heavy",
+      "cleavage": "poor",
+      "habit": "stubby square (tetragonal) prisms with pyramid ends",
+      "field_tests": [
+        "Small, hard (H7.5) prisms with a square cross-section and pyramid-capped ends (diagnostic).",
+        "Heavy with a brilliant adamantine luster.",
+        "A tough heavy-mineral in sands; often slightly radioactive — a pathfinder near radiometric anomalies."
+      ],
+      "target_tags": [],
+      "note": "Hard, heavy, square-prism accessory mineral. Its durability makes it a placer heavy-mineral, and it flags radiometric zones."
+    },
+    {
+      "id": "sulfur",
+      "name": "Native sulfur",
+      "aliases": ["brimstone"],
+      "hardness": [1.5, 2.5],
+      "streak": "white",
+      "luster": ["resinous", "greasy"],
+      "color": ["yellow"],
+      "magnetic": "no",
+      "heft": "light",
+      "cleavage": "poor",
+      "habit": "crusts and crystals around vents",
+      "field_tests": [
+        "Bright lemon-yellow, very soft (H2) and light; resinous.",
+        "Smells of struck matches; crumbles easily.",
+        "Forms around volcanic and hot-spring vents — NOT the same as yellow orpiment (which is an arsenic mineral and heavier)."
+      ],
+      "target_tags": [],
+      "note": "Bright-yellow native element. Distinguished from toxic yellow orpiment by its lightness, match smell, and volcanic/hot-spring setting."
+    },
+    {
+      "id": "gypsum",
+      "name": "Gypsum",
+      "aliases": ["selenite", "satin spar", "alabaster"],
+      "hardness": [2, 2],
+      "streak": "white",
+      "luster": ["vitreous", "pearly", "silky"],
+      "color": ["white", "clear"],
+      "magnetic": "no",
+      "heft": "light",
+      "cleavage": "perfect, one direction",
+      "habit": "clear 'selenite' blades, fibrous 'satin spar', sugary masses",
+      "field_tests": [
+        "Soft enough to scratch with a fingernail (H2) — the '2' on the Mohs scale.",
+        "Clear blades (selenite), silky fibers (satin spar), or sugary white masses (alabaster).",
+        "Does NOT fizz in acid (separates it from soft, fizzing calcite)."
+      ],
+      "target_tags": [],
+      "note": "The very soft, fingernail-scratchable sulfate. Comes as clear selenite, silky satin spar, or white alabaster; no acid fizz."
+    },
+    {
+      "id": "talc",
+      "name": "Talc",
+      "aliases": ["soapstone", "steatite"],
+      "hardness": [1, 1],
+      "streak": "white",
+      "luster": ["pearly", "dull"],
+      "color": ["white", "green"],
+      "magnetic": "no",
+      "heft": "light",
+      "cleavage": "perfect basal",
+      "habit": "foliated, soapy massive 'soapstone'",
+      "field_tests": [
+        "The SOFTEST mineral (H1) — a fingernail scratches it and it feels greasy/soapy.",
+        "Pale green to white; non-metallic (unlike greasy graphite/molybdenite, which are dark and metallic).",
+        "White streak."
+      ],
+      "target_tags": [],
+      "note": "The softest mineral — greasy, soapy, pale. Its non-metallic look separates it from the other greasy softies, graphite and molybdenite."
+    },
+    {
+      "id": "serpentine",
+      "name": "Serpentine",
+      "aliases": ["antigorite", "chrysotile", "serpentinite"],
+      "hardness": [3, 5],
+      "streak": "white",
+      "luster": ["greasy", "dull"],
+      "color": ["green"],
+      "magnetic": "no",
+      "heft": "medium",
+      "cleavage": "none",
+      "habit": "massive mottled masses, fibrous veinlets",
+      "hazard": "Fibrous (chrysotile) varieties can be ASBESTOS — do not saw, crush, or breathe dust from silky/fibrous pieces. Handle massive pieces only; keep fibrous ones sealed.",
+      "field_tests": [
+        "Mottled green with a greasy/waxy feel; variable hardness (H3–5).",
+        "Smooth massive rock (soapstone-like) — but silky FIBROUS veinlets may be asbestos.",
+        "White streak.",
+        "SAFETY: don't crush or inhale dust from fibrous varieties."
+      ],
+      "target_tags": [],
+      "note": "Greasy green metamorphic rock-mineral. Massive kinds are harmless, but fibrous chrysotile is asbestos — don't grind fibrous pieces."
+    },
+    {
+      "id": "chalcedony",
+      "name": "Chalcedony",
+      "aliases": ["agate", "jasper", "chert", "flint", "carnelian"],
+      "hardness": [6.5, 7],
+      "streak": "white",
+      "luster": ["vitreous", "dull"],
+      "color": ["white", "gray", "brown", "red", "blue", "clear"],
+      "magnetic": "no",
+      "heft": "medium",
+      "cleavage": "none",
+      "habit": "botryoidal, nodules, banded (agate), conchoidal fracture",
+      "field_tests": [
+        "Hard (H7 — it's microcrystalline quartz): scratches glass; a knife won't scratch it.",
+        "Waxy to glassy; no cleavage, breaks with curved (conchoidal) surfaces.",
+        "Banded = agate; solid red/brown opaque = jasper; translucent = common chalcedony."
+      ],
+      "target_tags": [],
+      "note": "Microcrystalline quartz — agate, jasper, chert. Quartz-hard and cleavage-free, but waxy and fine-grained rather than glassy crystals."
     }
   ]
 }
