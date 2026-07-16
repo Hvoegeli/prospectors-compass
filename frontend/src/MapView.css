@@ -188,6 +188,142 @@
   line-height: 1.4;
 }
 
+/* --- Identify: interactive dichotomous key (palette matched to the phone) --- */
+.id-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.id-intro {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #94a3b8;
+}
+
+.id-prop-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #cbd5e1;
+  margin-bottom: 6px;
+  cursor: help;
+}
+
+.id-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.id-chip {
+  padding: 6px 11px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.15);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  color: #e2e8f0;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  line-height: 1.2;
+}
+
+.id-chip:hover {
+  background: rgba(148, 163, 184, 0.25);
+}
+
+.id-chip.on {
+  background: rgba(96, 165, 250, 0.25);
+  border-color: #60a5fa;
+  color: #fff;
+}
+
+.id-result {
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px solid #334155;
+}
+
+.id-comment {
+  color: #e2e8f0;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.4;
+  margin-bottom: 8px;
+}
+
+.id-hazard {
+  color: #fca5a5;
+  background: rgba(248, 113, 113, 0.12);
+  border: 1px solid rgba(248, 113, 113, 0.35);
+  border-radius: 8px;
+  padding: 8px;
+  font-size: 12.5px;
+  line-height: 1.4;
+  margin-bottom: 8px;
+}
+
+.id-named {
+  margin: 2px 0;
+}
+
+.id-name {
+  color: #34d399;
+  font-size: 19px;
+  font-weight: 800;
+}
+
+.id-conf {
+  color: #94a3b8;
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+
+.id-note {
+  color: #cbd5e1;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.id-sub {
+  color: #cbd5e1;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 10px 0 6px;
+}
+
+.id-cand {
+  color: #e2e8f0;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.id-test {
+  color: #cbd5e1;
+  font-size: 13px;
+  line-height: 1.5;
+  margin-bottom: 2px;
+}
+
+.id-clear {
+  margin-top: 12px;
+  background: transparent;
+  border: none;
+  color: #60a5fa;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.id-clear:hover {
+  text-decoration: underline;
+}
+
 /* Click-away layer for any open bar menu. */
 .backdrop {
   position: absolute;

@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import maplibregl, {
   type LayerSpecification,
   type StyleSpecification,
 } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import './MapView.css'
+import { PROPERTIES, rankCandidates, type Observed } from './identification'
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8000'
 const TILE_BASE = import.meta.env.VITE_TILE_BASE ?? 'http://localhost:8080'
@@ -1223,7 +1224,95 @@ const FIELD_GUIDE: GuideCategory[] = [
   },
 ]
 
-type OpenMenu = 'looking' | 'recommend' | 'finds' | 'land' | 'access' | 'trips' | 'guide' | 'app' | null
+type OpenMenu = 'looking' | 'recommend' | 'finds' | 'land' | 'access' | 'trips' | 'identify' | 'guide' | 'app' | null
+
+// Map the "Looking for" target onto an identification target_tag so the Identify
+// key can softly bias toward the mineral you're hunting — the desktop analogue of
+// the phone passing the trip's resource. Reuses lookingToEngineTarget's mapping
+// (gold → au_placer, etc.); returns null for "Anything"/raw commodities (no bias).
+function identifyBias(target: string): string | null {
+  return lookingToEngineTarget(target)
+}
+
+// Offline specimen ID for the desktop research desk: pick observed properties →
+// ranked candidates + field tests, using the SAME deterministic matcher and dataset
+// as the phone (src/identification.ts). Never names a specimen below the confidence
+// threshold (shows field tests instead) and always surfaces toxic-mineral hazards.
+function IdentifyPanel({ tripTarget }: { tripTarget: string | null }) {
+  const [observed, setObserved] = useState<Observed>({})
+  const result = useMemo(() => rankCandidates(observed, { tripTarget }), [observed, tripTarget])
+  const named = !result.namingLocked ? result.candidates[0] : undefined
+
+  return (
+    <div className="id-panel">
+      <p className="id-intro">
+        Tap what you observe — <b>streak</b> and <b>hardness</b> tell the most. The guide
+        won’t name a specimen it isn’t sure about; it’ll suggest field tests instead.
+      </p>
+
+      {PROPERTIES.map((prop) => (
+        <div key={prop.key} className="id-prop">
+          <div className="id-prop-label" title={prop.help}>{prop.label}</div>
+          <div className="id-chips">
+            {prop.options.map((opt) => {
+              const on = observed[prop.key] === opt.id
+              return (
+                <button
+                  key={opt.id}
+                  className={`id-chip${on ? ' on' : ''}`}
+                  onClick={() =>
+                    setObserved((o) => ({ ...o, [prop.key]: on ? undefined : opt.id }))
+                  }
+                >
+                  {opt.label}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      ))}
+
+      {result.answeredCount > 0 && (
+        <div className="id-result">
+          <div className="id-comment">{result.comment}</div>
+
+          {/* Safety first: always surface toxic candidates, named or not. */}
+          {result.hazards.map((h) => (
+            <div key={h.id} className="id-hazard">⚠️ {h.name}: {h.hazard}</div>
+          ))}
+
+          {named ? (
+            <div className="id-named">
+              <div className="id-name">{named.mineral.name}</div>
+              <div className="id-conf">{Math.round(result.confidence * 100)}% confidence</div>
+              <div className="id-note">{named.mineral.note}</div>
+            </div>
+          ) : (
+            result.candidates.length > 0 && (
+              <div>
+                <div className="id-sub">Possibilities</div>
+                {result.candidates.map((c) => (
+                  <div key={c.mineral.id} className="id-cand">• {c.mineral.name}</div>
+                ))}
+              </div>
+            )
+          )}
+
+          {result.fieldTests.length > 0 && (
+            <div className="id-tests">
+              <div className="id-sub">{named ? 'Confirm with' : 'Field tests to narrow it'}</div>
+              {result.fieldTests.map((t) => (
+                <div key={t} className="id-test">• {t}</div>
+              ))}
+            </div>
+          )}
+
+          <button className="id-clear" onClick={() => setObserved({})}>Clear observations</button>
+        </div>
+      )}
+    </div>
+  )
+}
 
 export default function MapView() {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -2351,7 +2440,24 @@ export default function MapView() {
 
         <span className="status-mini" title={status}>{status}</span>
 
-        {/* 6 — Field guide: non-AI beginner prospecting advice (reference zone) */}
+        {/* 7 — Identify: interactive non-AI dichotomous key (specimen ID) */}
+        <div className="bar-item">
+          <button className="bar-btn" onClick={() => toggleMenu('identify')}>
+            🔬 Identify ▾
+          </button>
+          {openMenu === 'identify' && (
+            <div className="dropdown guide">
+              <IdentifyPanel tripTarget={identifyBias(target)} />
+              <p className="guide-foot">
+                A non-AI property key over the bundled mineral set — deterministic and
+                offline. It won’t name a specimen below its confidence threshold; run the
+                field tests it suggests instead.
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* 8 — Field guide: non-AI beginner prospecting advice (reference zone) */}
         <div className="bar-item">
           <button className="bar-btn" onClick={() => toggleMenu('guide')}>
             📖 Field guide ▾

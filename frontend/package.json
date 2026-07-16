@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "check:identify-sync": "node scripts/check-identify-sync.mjs",
+    "build": "npm run check:identify-sync && tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
     "tauri": "tauri"
