@@ -1,0 +1,65 @@
+# Distribution compose — the fresh-machine variant of the repo-root docker-compose.yml.
+#
+# Differences from dev:
+#   * NO `build:` — a fresh machine has no source tree. Images are pre-loaded from
+#     the bundled image/*.tar.gz (see infra/packaging/make-bundle.sh) via `docker load`.
+#   * `pull_policy: never` — never reach out to a registry; this is an OFFLINE install.
+#     If an image is missing, fail loudly rather than silently pulling 1+ GB.
+#   * Paths are bundle-relative (this file ships at the bundle root), so the seed,
+#     tiles, and slope raster are mounted from the bundle, not the repo.
+#
+# The seed DB in ./db-init auto-restores on the FIRST `up` (empty pgdata volume),
+# then never again — see infra/packaging/make-seed.sh.
+services:
+  db:
+    image: prospector-db:local
+    pull_policy: never
+    container_name: prospector-db
+    environment:
+      POSTGRES_USER: prospector
+      POSTGRES_PASSWORD: prospector
+      POSTGRES_DB: prospector
+    ports:
+      - "1776:5432"
+    volumes:
+      - prospector_pgdata:/var/lib/postgresql/data
+      - ./db-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U prospector -d prospector"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  tileserver:
+    image: maptiler/tileserver-gl:latest
+    pull_policy: never
+    container_name: prospector-tiles
+    command: ["--config", "/data/config.json"]
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./tiles:/data:ro
+    restart: unless-stopped
+
+  backend:
+    image: prospector-backend:local
+    pull_policy: never
+    container_name: prospector-backend
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: "postgresql://prospector:prospector@db:5432/prospector"
+      LLM_MOCK_MODE: "true"   # v1 is offline — never calls Anthropic.
+      ANTHROPIC_API_KEY: ""
+    volumes:
+      - ./backend-data/processed/slope.tif:/app/data/processed/slope.tif:ro
+      - prospector_findphotos:/app/data/find-photos
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+volumes:
+  prospector_pgdata:
+  prospector_findphotos:

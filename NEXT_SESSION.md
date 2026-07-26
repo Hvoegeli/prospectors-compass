@@ -121,22 +121,32 @@ is that the **Docker daemon is running** (Docker Desktop / Colima).
 ```bash
 cd /Users/harrisonvoegeli/Desktop/prospectors-compass/frontend
 npm run tauri dev                            # DEV: starts Docker services + backend + window
-npm run tauri build                          # RELEASE: builds the installable .app + .dmg
+npm run tauri build                          # RELEASE (bare): .app/.dmg that runs the stack from THIS repo/machine
+npm run tauri:dist                           # DISTRIBUTABLE: self-contained fresh-machine .app/.dmg (bundles offline data)
 ```
 
-**Build the installable app (Phase 3b Stage 2 — works on this machine).** `npm run tauri build`
-produces a real double-clickable app with the rounded logo icon, UI bundled as static files
-(no dev server), under `frontend/src-tauri/target/release/bundle/` (`macos/Prospector's
-Compass.app` + `dmg/Prospector's Compass_*.dmg`). Drag the `.app` to /Applications.
+**Two build flavors — pick by target machine:**
+
+**1) `npm run tauri build` (bare, machine-local).** Produces a real double-clickable app with
+the rounded logo icon, UI bundled as static files (no dev server), under
+`frontend/src-tauri/target/release/bundle/`. It runs `docker compose` from the repo path baked
+in at compile (`CARGO_MANIFEST_DIR`), so it only works on THIS Mac (repo + Docker present). No
+offline data is bundled — smallest build, needs no pre-built `release/bundle`.
+
+**2) `npm run tauri:dist` (fresh-machine distributable — Phase 3b, DONE 2026-07-25).** Same app,
+but bundles the entire offline stack — the three Docker images (as tarballs), the seed DB, the
+served tiles, and the slope raster — into `Contents/Resources/bundle/` (~1.8 GB `.app`/`.dmg`).
+On a clean Mac with only Docker Desktop, first launch `docker load`s the images and Postgres
+restores the seed automatically (see `lib.rs` → `ensure_images_loaded` / `stack_dir`). Prereq:
+build the bundle first with `bash infra/packaging/make-seed.sh && bash infra/packaging/make-bundle.sh`
+(needs the dev stack running). The `resources` wiring lives in `src-tauri/tauri.dist.conf.json`
+(kept OUT of the base config so `tauri dev`/`tauri build` don't require the 1.8 GB `release/bundle`).
+
 - **Do NOT double-click `target/debug/app`** — that's the raw dev binary: it shows a generic
-  icon and loads the dev server (`:5173`), so clicked on its own it's blank. Use the release
+  icon and loads the dev server (`:5173`), so clicked on its own it's blank. Use a release
   `.app`, or `npm run tauri dev`.
-- The release app finds `docker` by absolute path (`/opt/homebrew/bin`, `/usr/local/bin`), so a
+- Both release flavors find `docker` by absolute path (`/opt/homebrew/bin`, `/usr/local/bin`), so a
   Finder launch under a minimal `PATH` still starts the stack (`docker_bin()` in `lib.rs`).
-- **Still machine-local:** the release app runs `docker compose` from the repo path baked in at
-  compile (`CARGO_MANIFEST_DIR`). It works on THIS Mac (repo + Docker present). A true
-  fresh-machine distributable (bundle the compose file + backend image + a DB seed as app
-  resources, `docker load`/`pg_restore` on first run) is the remaining Phase 3b work (Stage 3b–d).
 
 - **Startup orchestration** lives in `frontend/src-tauri/src/lib.rs` (`run()` setup):
   1. `docker compose up -d` from the repo root (idempotent; brings up Postgres :1776 +
