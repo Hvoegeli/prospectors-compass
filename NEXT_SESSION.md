@@ -1,15 +1,20 @@
 # Next Session — Where We Left Off
 
-_Last updated: 2026-06-12_
+_Last updated: 2026-07-26_
 
 ## State of the project
 
-- **Branch:** `feat/mobile-field-app` (not merged to `main`). All recent work lives here.
-- **Folder:** `/Users/harrisonvoegeli/Desktop/prospectors-compass` (moved out of the old
-  `Unfinished-Projects/` path; the space in the name was also removed).
-- **Current focus:** the **iOS mobile field app** (`mobile/`). The desktop research
-  surface and the deterministic offline scoring engine are built and working; the active
-  frontier is turning the phone from a read-only viewer into a real field companion.
+- **v1 is feature-complete on both surfaces.** Desktop research/planning + the
+  deterministic offline scoring engine, and the iOS field app (offline maps, GPS, find
+  logging, specimen-ID key, desktop↔phone handoff) are all shipped and merged to `main`.
+  Reconciled against the code on 2026-07-26 — see the status banner in `docs/TASK_LIST.md`.
+- **Folder:** `/Users/harrisonvoegeli/Desktop/prospectors-compass`.
+- **Most recent work:** the **fresh-machine desktop distributable** (self-contained
+  `.dmg`; see `docs/INSTALL.md` + `infra/packaging/`) and v1 finishing touches (root
+  `README.md`, doc reconciliation, scoring fixtures).
+- **Remaining true work (small):** documenting open questions in `docs/MEMO.md`, and a
+  clean-second-Mac test of the packaged `.dmg`. (The test suite — 82 passing, incl. the
+  new end-to-end scoring fixtures — and the Flow A/B smoke test are done.)
 
 This is offline-first, rule-based, no cloud AI in v1 (see `CLAUDE.md` and `docs/PRD.md`).
 
@@ -58,19 +63,17 @@ Flow B in `docs/USER_FLOW.md`. Done / next / after:
 | Desktop to phone handoff (`.pcbundle` export/AirDrop) | §17 | Done |
 | Live GPS position on the map | §15 | Done |
 | Planned waypoints visible + tap-to-fly | §15 | Done |
-| Factor-by-factor rationale on the phone | MVP6 rule | **Done this session (E)** |
-| Battery-conservative GPS while idle | §15 | **Done this session (F)** |
-| **Find logging: drop a find at GPS with kind + note (+ photo)** | §15, Flow B | **NEXT** |
-| Append-only sync of finds/waypoints back to desktop | §15, §17 | After (depends on find logging) |
-| Waypoint navigation (bearing + distance) | §15 | Later |
-| Non-AI specimen ID dichotomous key | §18, Phase 3 | Phase 3, its own effort |
+| Factor-by-factor rationale on the phone | MVP6 rule | Done |
+| Battery-conservative GPS while idle | §15 | Done |
+| Find logging: drop a find at GPS with kind + note + photo | §15, Flow B | Done (`mobile/src/finds.ts`) |
+| Append-only sync of finds/waypoints back to desktop | §15, §17 | Done (`.pcfinds` AirDrop) |
+| Waypoint navigation (bearing + distance) | §15 | Done |
+| Non-AI specimen ID dichotomous key | §18, Phase 3 | Done (51 minerals; `identification.ts`) |
 
-**Recommended next step: find logging (H).** It is the keystone of the field surface and
-the climax of Flow B ("user logs find with GPS + notes"). It turns the app from a viewer
-into a capture tool. It needs a small local-persistence layer (write finds to the documents
-directory as the trip's append-only log). Ship coordinates + note first, add the photo
-attachment as a fast follow. Then round-trip those finds back to the desktop (needs the
-desktop import side too).
+**All mobile v1 needs above are shipped.** The phone is a full field companion: offline
+maps, live GPS, waypoint navigation, find logging with photos, the specimen-ID key, and a
+round-trip of finds back to the desktop. Remaining project work is not on mobile — see the
+"State of the project" remaining-work list above.
 
 **Designed out by offline-first (not pending debt):** magic-link auth, the network API
 client, `/data/area-export`, and the in-field agent chat. The `.pcbundle` AirDrop path
